@@ -1,0 +1,248 @@
+{
+  "name": "B2B Agency Lead Pipeline: Tech Stack & SEO/GEO Audit -> Verified Decision-Makers (Apify)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## B2B Agency Pipeline (Zero API Keys, $0 on Dead Sites)\n\n**How it works:**\n1. Scans prospect domains with **Website Tech Stack, Pixels & SEO/GEO Audit Detector** (`$15/1k`, `$0` on unreachable sites).\n2. Filters ONLY prospects with real `salesOpportunities` (missing Meta Pixel, missing `/llms.txt`, blocked AI bots, expiring SSL, missing DMARC).\n3. Enriches ONLY qualified domains with **Website Email, Phone & Decision-Maker Finder** (`$0` start fee, `$0` on empty sites, GDPR source URL provenance).\n\n**Setup (30 sec):**\nSet `APIFY_TOKEN` in your n8n environment variables (or replace the Authorization header with your Apify Bearer token from console.apify.com/settings/integrations).\n\nActors: https://apify.com/aegisaudit",
+        "height": 340,
+        "width": 420,
+        "color": 4
+      },
+      "id": "note-overview",
+      "name": "Setup & Pricing Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -380,
+        -220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "domains-list",
+              "name": "domains",
+              "value": "={{ [\"baremetrics.com\", \"allbirds.com\", \"posthog.com\", \"lakefrontbrewery.com\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "min-ops",
+              "name": "minOpportunities",
+              "value": 1,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-prospects",
+      "name": "Set Prospect Domains",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~website-tech-stack-seo-audit/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, checkSeoAndGeo: true, checkDnsAndSsl: true, includeFailedDomainsInDataset: false, concurrency: 20, requestTimeoutMs: 8000 }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-actor2-audit",
+      "name": "Audit Tech Stack & SEO/GEO (Actor #2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const minOps = Number($('Set Prospect Domains').first()?.json?.minOpportunities ?? 1);\n\nconst PITCH_LABELS = {\n  MISSING_META_PIXEL_ON_ECOMMERCE: 'Missing Meta Pixel on e-commerce store',\n  ECOMMERCE_WITHOUT_EMAIL_MARKETING_CRM: 'E-commerce store without email/CRM automation',\n  NO_WEB_ANALYTICS_DETECTED: 'No web analytics detected',\n  NO_PAID_AD_PIXELS_DETECTED: 'No paid ad pixels installed',\n  AD_PIXELS_WITHOUT_DETECTED_CMP_BANNER: 'Running ad pixels without detected consent banner',\n  MISSING_LLMS_TXT_FOR_AI_SEARCH: 'Missing /llms.txt for AI search visibility',\n  AI_SEARCH_CRAWLERS_BLOCKED_IN_ROBOTS: 'Blocking AI search crawlers in robots.txt',\n  MISSING_DMARC_EMAIL_SECURITY: 'Missing DMARC email authentication record',\n  MISSING_SPF_EMAIL_SECURITY: 'Missing SPF record',\n  SSL_CERTIFICATE_EXPIRING_SOON: 'SSL certificate expiring within 21 days',\n  INVALID_OR_MISSING_SSL_CERTIFICATE: 'Invalid or missing SSL certificate',\n  HOMEPAGE_SET_TO_NOINDEX: 'Homepage accidentally set to noindex',\n  MISSING_JSON_LD_STRUCTURED_DATA: 'Missing JSON-LD structured schema',\n  WEAK_HTTP_SECURITY_HEADERS: 'Weak HTTP security headers (<50/100)',\n  SLOW_SERVER_TTFB_OVER_1500MS: 'Slow server TTFB (>1.5s)'\n};\n\nconst auditsByDomain = {};\nconst qualifiedDomains = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row || row.status !== 'analyzed' || !row.domain) continue;\n\n  const ops = Array.isArray(row.salesOpportunities) ? row.salesOpportunities : [];\n  if (ops.length < minOps) continue;\n\n  const domainKey = String(row.domain).toLowerCase().trim();\n  if (auditsByDomain[domainKey]) continue;\n\n  const readablePitch = ops\n    .slice(0, 3)\n    .map((flag) => PITCH_LABELS[flag] || flag)\n    .join('; ');\n\n  auditsByDomain[domainKey] = {\n    domain: domainKey,\n    finalUrl: row.finalUrl || null,\n    cms: row.cms || null,\n    ecommercePlatform: row.ecommercePlatform || null,\n    hostingOrCdn: row.hostingOrCdn || null,\n    technologyCount: row.technologyCount ?? 0,\n    adPixels: row.marketingSignals?.adPixels || [],\n    crmTools: row.marketingSignals?.crmTools || [],\n    seoScore: row.seo?.seoScore ?? null,\n    geoReadinessScore: row.geo?.geoReadinessScore ?? null,\n    hasLlmsTxt: row.geo?.hasLlmsTxt ?? null,\n    blockedAiBots: row.geo?.blockedAiBots || [],\n    sslDaysUntilExpiry: row.ssl?.daysUntilExpiry ?? null,\n    hasDmarc: row.dns?.hasDmarc ?? null,\n    salesOpportunities: ops,\n    pitchSummary: readablePitch\n  };\n  qualifiedDomains.push(domainKey);\n}\n\nif (qualifiedDomains.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    domains: qualifiedDomains,\n    qualifiedCount: qualifiedDomains.length,\n    auditsByDomain\n  }\n}];"
+      },
+      "id": "code-qualify",
+      "name": "Qualify Agency Leads (Filter Sales Opportunities)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxPagesPerDomain: 6, verifyDns: true, extractDecisionMakers: true, inferPatternEmails: false, includeEmptyDomainsInDataset: false, concurrency: 20, requestTimeoutMs: 7000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-actor1-enrich",
+      "name": "Enrich Verified Decision-Makers (Actor #1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const auditsByDomain = $('Qualify Agency Leads (Filter Sales Opportunities)').first()?.json?.auditsByDomain || {};\nconst output = [];\n\nfor (const item of $input.all()) {\n  const lead = item.json;\n  if (!lead || lead.status !== 'enriched' || !lead.domain) continue;\n\n  const domainKey = String(lead.domain).toLowerCase().trim();\n  const audit = auditsByDomain[domainKey] || {};\n\n  const verifiedDms = Array.isArray(lead.decisionMakers)\n    ? lead.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const baseFields = {\n    domain: domainKey,\n    companyName: lead.companyName || domainKey,\n    cms: audit.cms ?? null,\n    ecommercePlatform: audit.ecommercePlatform ?? null,\n    technologyCount: audit.technologyCount ?? 0,\n    seoScore: audit.seoScore ?? null,\n    geoReadinessScore: audit.geoReadinessScore ?? null,\n    hasLlmsTxt: audit.hasLlmsTxt ?? null,\n    blockedAiBots: (audit.blockedAiBots || []).join(', '),\n    sslDaysUntilExpiry: audit.sslDaysUntilExpiry ?? null,\n    salesOpportunities: (audit.salesOpportunities || []).join(', '),\n    pitchSummary: audit.pitchSummary || '',\n    emailProvider: lead.dns?.emailProvider || null,\n    hasMx: lead.dns?.hasMx ?? false,\n    hasDmarc: lead.dns?.hasDmarc ?? false,\n    primaryPhone: Array.isArray(lead.phones) && lead.phones.length > 0 ? lead.phones[0] : null,\n    companyLinkedin: lead.socials?.linkedin || null,\n    extractedAtUtc: lead.extractedAtUtc || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      output.push({\n        json: {\n          ...baseFields,\n          contactType: 'verified_decision_maker',\n          contactName: dm.fullName,\n          contactRole: dm.role,\n          contactEmail: dm.email,\n          contactLinkedin: dm.linkedinUrl || null,\n          emailSource: dm.emailSource,\n          sourceUrl: dm.sourceUrl || lead.sourceUrl || null,\n          confidence: dm.confidence\n        }\n      });\n    }\n  } else if (lead.primaryEmail) {\n    output.push({\n      json: {\n        ...baseFields,\n        contactType: 'company_primary_email',\n        contactName: null,\n        contactRole: null,\n        contactEmail: lead.primaryEmail,\n        contactLinkedin: null,\n        emailSource: 'published_company_email',\n        sourceUrl: lead.sourceUrl || null,\n        confidence: lead.confidence ?? 0\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "id": "code-merge-crm",
+      "name": "Merge Audit + Verified Contacts (CRM Ready)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Connect Your Destination\nAttach **Google Sheets**, **HubSpot**, **Smartlead**, **Instantly**, or **Clay Webhook** directly after `Merge Audit + Verified Contacts (CRM Ready)`.\n\nEach row already includes:\n- `contactEmail` (MX-verified, never guessed)\n- `contactName` & `contactRole`\n- `sourceUrl` (GDPR Art. 14 provenance)\n- `pitchSummary` (exact technical gaps found on their site)",
+        "height": 240,
+        "width": 360,
+        "color": 6
+      },
+      "id": "note-destination",
+      "name": "CRM Export Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        920,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Set Prospect Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Prospect Domains": {
+      "main": [
+        [
+          {
+            "node": "Audit Tech Stack & SEO/GEO (Actor #2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Tech Stack & SEO/GEO (Actor #2)": {
+      "main": [
+        [
+          {
+            "node": "Qualify Agency Leads (Filter Sales Opportunities)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualify Agency Leads (Filter Sales Opportunities)": {
+      "main": [
+        [
+          {
+            "node": "Enrich Verified Decision-Makers (Actor #1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Verified Decision-Makers (Actor #1)": {
+      "main": [
+        [
+          {
+            "node": "Merge Audit + Verified Contacts (CRM Ready)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "apify"
+    },
+    {
+      "name": "lead-generation"
+    },
+    {
+      "name": "seo"
+    },
+    {
+      "name": "b2b"
+    }
+  ]
+}

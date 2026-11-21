@@ -1,0 +1,153 @@
+{
+  "name": "Bulk Domain & Google Maps List -> Verified Corporate Emails & Decision-Makers (Apify)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Bulk Domain Contact & Decision-Maker Enrichment\n\nFeed websites from **Google Maps Scraper**, **CSV**, **Google Sheets**, or a **Webhook**.\n\n**Why this saves outbound margin:**\n- **$0.00 actor start fee**\n- **$0.00 charge on empty, unreachable, or suppressed domains**\n- **GDPR Art. 14 provenance**: every email & executive includes the exact `sourceUrl` where it was published (`inferPatternEmails: false` so guessed emails are never billed).\n\nActor: https://apify.com/aegisaudit/domain-decision-maker-finder",
+        "height": 290,
+        "width": 410,
+        "color": 4
+      },
+      "id": "note-intro",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -380,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "enrich-domains",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-in",
+      "name": "Webhook (POST domains[])",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawItems = $input.all();\nconst seen = new Set();\nconst domains = [];\n\nconst pushDomain = (val) => {\n  if (!val || typeof val !== 'string') return;\n  let cleaned = val.trim().toLowerCase();\n  cleaned = cleaned.replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split(/[\\/?#]/)[0].trim();\n  if (!cleaned || !cleaned.includes('.') || cleaned.includes(' ')) return;\n  if (!seen.has(cleaned)) {\n    seen.add(cleaned);\n    domains.push(cleaned);\n  }\n};\n\nfor (const item of rawItems) {\n  const body = item.json?.body ?? item.json;\n  if (Array.isArray(body?.domains)) {\n    for (const d of body.domains) pushDomain(d);\n  } else if (typeof body?.website === 'string') {\n    pushDomain(body.website);\n  } else if (typeof body?.domain === 'string') {\n    pushDomain(body.domain);\n  } else if (typeof body?.url === 'string') {\n    pushDomain(body.url);\n  }\n}\n\nif (domains.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    domains,\n    count: domains.length\n  }\n}];"
+      },
+      "id": "code-normalize",
+      "name": "Normalize & Deduplicate Domains",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxPagesPerDomain: 6, verifyDns: true, extractDecisionMakers: true, inferPatternEmails: false, includeEmptyDomainsInDataset: false, concurrency: 20, requestTimeoutMs: 7000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-enrich",
+      "name": "Run Website Email & Decision-Maker Finder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || r.status !== 'enriched' || !r.domain) continue;\n\n  const verifiedDms = Array.isArray(r.decisionMakers)\n    ? r.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const common = {\n    domain: r.domain,\n    companyName: r.companyName || r.domain,\n    hasMx: r.dns?.hasMx ?? false,\n    hasSpf: r.dns?.hasSpf ?? false,\n    hasDmarc: r.dns?.hasDmarc ?? false,\n    emailProvider: r.dns?.emailProvider || null,\n    emailPattern: r.emailPattern || null,\n    phones: Array.isArray(r.phones) ? r.phones.join(', ') : '',\n    companyLinkedin: r.socials?.linkedin || null,\n    vatIds: Array.isArray(r.legal?.vatIds) ? r.legal.vatIds.join(', ') : '',\n    impressumUrl: r.legal?.impressumUrl || null,\n    estimatedChargeUsd: r.billing?.estimatedChargeUsd ?? 0,\n    extractedAtUtc: r.extractedAtUtc || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      rows.push({\n        json: {\n          ...common,\n          recordType: 'decision_maker',\n          fullName: dm.fullName,\n          role: dm.role,\n          email: dm.email,\n          emailSource: dm.emailSource,\n          linkedinUrl: dm.linkedinUrl || null,\n          sourceUrl: dm.sourceUrl || r.sourceUrl || null,\n          confidence: dm.confidence\n        }\n      });\n    }\n  } else if (r.primaryEmail) {\n    rows.push({\n      json: {\n        ...common,\n        recordType: 'company_contact',\n        fullName: null,\n        role: null,\n        email: r.primaryEmail,\n        emailSource: r.source || 'published',\n        linkedinUrl: null,\n        sourceUrl: r.sourceUrl || null,\n        confidence: r.confidence ?? 0\n      }\n    });\n  }\n}\n\nreturn rows;"
+      },
+      "id": "code-flatten",
+      "name": "Flatten Verified Contacts & GDPR Provenance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (POST domains[])": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Deduplicate Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Deduplicate Domains": {
+      "main": [
+        [
+          {
+            "node": "Run Website Email & Decision-Maker Finder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Website Email & Decision-Maker Finder": {
+      "main": [
+        [
+          {
+            "node": "Flatten Verified Contacts & GDPR Provenance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "apify"
+    },
+    {
+      "name": "lead-enrichment"
+    },
+    {
+      "name": "gdpr"
+    },
+    {
+      "name": "n8n"
+    }
+  ]
+}
