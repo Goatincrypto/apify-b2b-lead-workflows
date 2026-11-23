@@ -1,20 +1,52 @@
 {
-  "name": "Bulk Domain & Google Maps List -> Verified Corporate Emails & Decision-Makers (Apify)",
+  "name": "Enrich Bulk Company Domains with Verified Decision-Makers & GDPR Source Provenance",
   "nodes": [
     {
       "parameters": {
-        "content": "## Bulk Domain Contact & Decision-Maker Enrichment\n\nFeed websites from **Google Maps Scraper**, **CSV**, **Google Sheets**, or a **Webhook**.\n\n**Why this saves outbound margin:**\n- **$0.00 actor start fee**\n- **$0.00 charge on empty, unreachable, or suppressed domains**\n- **GDPR Art. 14 provenance**: every email & executive includes the exact `sourceUrl` where it was published (`inferPatternEmails: false` so guessed emails are never billed).\n\nActor: https://apify.com/aegisaudit/domain-decision-maker-finder",
-        "height": 290,
-        "width": 410,
+        "content": "### How it works\nThis workflow accepts a list of company websites via Webhook (from Google Maps Scraper, Clay, Airtable, or CSV), normalizes and deduplicates the domains, and runs Apify's Website Email, Phone & Decision-Maker Finder synchronously. It filters out unreachable or empty sites (which are billed at 0 USD) and outputs flat CRM-ready rows containing MX-verified decision-maker contacts, company fallback emails, phone numbers, DNS deliverability status (MX/SPF/DMARC), and exact GDPR Art. 14 `sourceUrl` provenance.\n\n### Setup\n1. Create an Apify account and copy your personal API token from Apify Console -> Settings -> Integrations.\n2. Open **Run Email & Decision-Maker Finder**, choose **Generic Credential Type -> HTTP Bearer Auth**, and attach your Apify API token credential.\n3. Activate the workflow and send a `POST` request with `{\"domains\": [\"lakefrontbrewery.com\", \"assetzcapital.co.uk\"]}` to the Webhook URL.\n\n### Customization\n- Swap the **Receive Domain List Webhook** trigger with a **Google Sheets** or **Schedule Trigger** node for automated batch runs.\n- Pass an optional `suppressionList` array in the JSON body to enforce custom GDPR Art. 17 opt-out domains or SHA-256 email hashes.",
+        "height": 480,
+        "width": 440,
         "color": 4
       },
       "id": "note-intro",
-      "name": "Workflow Overview",
+      "name": "Overview & Setup Instructions",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -380,
-        -200
+        -440,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Receive & Normalize Domains\nCleans URLs, removes duplicates, and prevents empty batches.",
+        "height": 260,
+        "width": 560,
+        "color": 7
+      },
+      "id": "note-s1",
+      "name": "Stage 1 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Enrich & Flatten Verified Contacts\nExtracts MX-verified executives and company contacts with GDPR Art. 14 provenance.",
+        "height": 260,
+        "width": 600,
+        "color": 6
+      },
+      "id": "note-s2",
+      "name": "Stage 2 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        180
       ]
     },
     {
@@ -25,12 +57,12 @@
         "options": {}
       },
       "id": "webhook-in",
-      "name": "Webhook (POST domains[])",
+      "name": "Receive Domain List Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -360,
-        160
+        -340,
+        280
       ]
     },
     {
@@ -42,21 +74,19 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -100,
-        160
+        -80,
+        280
       ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -71,12 +101,12 @@
         }
       },
       "id": "http-enrich",
-      "name": "Run Website Email & Decision-Maker Finder",
+      "name": "Run Email & Decision-Maker Finder",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        180,
-        160
+        260,
+        280
       ]
     },
     {
@@ -84,17 +114,17 @@
         "jsCode": "const rows = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || r.status !== 'enriched' || !r.domain) continue;\n\n  const verifiedDms = Array.isArray(r.decisionMakers)\n    ? r.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const common = {\n    domain: r.domain,\n    companyName: r.companyName || r.domain,\n    hasMx: r.dns?.hasMx ?? false,\n    hasSpf: r.dns?.hasSpf ?? false,\n    hasDmarc: r.dns?.hasDmarc ?? false,\n    emailProvider: r.dns?.emailProvider || null,\n    emailPattern: r.emailPattern || null,\n    phones: Array.isArray(r.phones) ? r.phones.join(', ') : '',\n    companyLinkedin: r.socials?.linkedin || null,\n    vatIds: Array.isArray(r.legal?.vatIds) ? r.legal.vatIds.join(', ') : '',\n    impressumUrl: r.legal?.impressumUrl || null,\n    estimatedChargeUsd: r.billing?.estimatedChargeUsd ?? 0,\n    extractedAtUtc: r.extractedAtUtc || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      rows.push({\n        json: {\n          ...common,\n          recordType: 'decision_maker',\n          fullName: dm.fullName,\n          role: dm.role,\n          email: dm.email,\n          emailSource: dm.emailSource,\n          linkedinUrl: dm.linkedinUrl || null,\n          sourceUrl: dm.sourceUrl || r.sourceUrl || null,\n          confidence: dm.confidence\n        }\n      });\n    }\n  } else if (r.primaryEmail) {\n    rows.push({\n      json: {\n        ...common,\n        recordType: 'company_contact',\n        fullName: null,\n        role: null,\n        email: r.primaryEmail,\n        emailSource: r.source || 'published',\n        linkedinUrl: null,\n        sourceUrl: r.sourceUrl || null,\n        confidence: r.confidence ?? 0\n      }\n    });\n  }\n}\n\nreturn rows;"
       },
       "id": "code-flatten",
-      "name": "Flatten Verified Contacts & GDPR Provenance",
+      "name": "Flatten Verified Contacts & Provenance",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        460,
-        160
+        540,
+        280
       ]
     }
   ],
   "connections": {
-    "Webhook (POST domains[])": {
+    "Receive Domain List Webhook": {
       "main": [
         [
           {
@@ -109,18 +139,18 @@
       "main": [
         [
           {
-            "node": "Run Website Email & Decision-Maker Finder",
+            "node": "Run Email & Decision-Maker Finder",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Run Website Email & Decision-Maker Finder": {
+    "Run Email & Decision-Maker Finder": {
       "main": [
         [
           {
-            "node": "Flatten Verified Contacts & GDPR Provenance",
+            "node": "Flatten Verified Contacts & Provenance",
             "type": "main",
             "index": 0
           }

@@ -1,31 +1,63 @@
 {
-  "name": "B2B Agency Lead Pipeline: Tech Stack & SEO/GEO Audit -> Verified Decision-Makers (Apify)",
+  "name": "Qualify B2B Agency Leads by Tech Stack & AI Search (GEO) Audit, Then Enrich Verified Decision-Makers",
   "nodes": [
     {
       "parameters": {
-        "content": "## B2B Agency Pipeline (Zero API Keys, $0 on Dead Sites)\n\n**How it works:**\n1. Scans prospect domains with **Website Tech Stack, Pixels & SEO/GEO Audit Detector** (`$15/1k`, `$0` on unreachable sites).\n2. Filters ONLY prospects with real `salesOpportunities` (missing Meta Pixel, missing `/llms.txt`, blocked AI bots, expiring SSL, missing DMARC).\n3. Enriches ONLY qualified domains with **Website Email, Phone & Decision-Maker Finder** (`$0` start fee, `$0` on empty sites, GDPR source URL provenance).\n\n**Setup (30 sec):**\nSet `APIFY_TOKEN` in your n8n environment variables (or replace the Authorization header with your Apify Bearer token from console.apify.com/settings/integrations).\n\nActors: https://apify.com/aegisaudit",
-        "height": 340,
-        "width": 420,
+        "content": "### How it works\nThis workflow automates B2B agency prospecting in two cost-controlled stages using only built-in n8n nodes. First, it audits a batch of prospect domains for 136 website technologies, ad pixels, technical SEO scores, 2026 AI Search / GEO readiness (`/llms.txt` and `robots.txt` rules for GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot), live TLS certificate expiry, and DMARC/SPF. Next, it filters strictly for domains with actionable `salesOpportunities` flags and builds a clean `pitchSummary`. Finally, it enriches only qualified domains to extract directly published corporate emails, phones, and MX-verified decision-makers with exact GDPR Art. 14 `sourceUrl` provenance, outputting flat CRM-ready rows.\n\n### Setup\n1. Create a free or paid Apify account and copy your API token from Apify Console -> Settings -> Integrations.\n2. In both HTTP Request nodes, select **Generic Credential Type -> HTTP Bearer Auth** and add a new **HTTP Bearer Auth** credential using your Apify API token.\n3. Update the sample `domains` array in **Configure Prospect Domains** (or replace it with a Google Sheets, Airtable, or Webhook input).\n4. Attach Google Sheets, HubSpot, Clay, or your outbound tool after **Merge Audit & Verified Contacts**.\n\n### Customization\n- Adjust `minOpportunities` in **Configure Prospect Domains** to tighten lead qualification.\n- Edit `PITCH_LABELS` in **Filter Qualified Agency Leads** to match your agency's specific offer (SEO/GEO, paid ads, SSL/DMARC security, or e-commerce CRM).",
+        "height": 540,
+        "width": 440,
         "color": 4
       },
       "id": "note-overview",
-      "name": "Setup & Pricing Notes",
+      "name": "Overview & Setup Instructions",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -380,
-        -220
+        -460,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Input & Tech / SEO / GEO Audit\nScans prospect domains synchronously (0 USD charged on unreachable sites).",
+        "height": 280,
+        "width": 760,
+        "color": 7
+      },
+      "id": "note-stage-1",
+      "name": "Stage 1 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Qualify & Enrich Decision-Makers\nFilters out sites with zero sales gaps, then enriches only qualified domains with MX-verified contacts & GDPR source URLs.",
+        "height": 280,
+        "width": 860,
+        "color": 6
+      },
+      "id": "note-stage-2",
+      "name": "Stage 2 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        200
       ]
     },
     {
       "parameters": {},
       "id": "trigger-manual",
-      "name": "When clicking 'Test workflow'",
+      "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -360,
-        180
+        -340,
+        300
       ]
     },
     {
@@ -49,25 +81,23 @@
         "options": {}
       },
       "id": "set-prospects",
-      "name": "Set Prospect Domains",
+      "name": "Configure Prospect Domains",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -120,
-        180
+        -100,
+        300
       ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.apify.com/v2/acts/aegisaudit~website-tech-stack-seo-audit/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -82,38 +112,36 @@
         }
       },
       "id": "http-actor2-audit",
-      "name": "Audit Tech Stack & SEO/GEO (Actor #2)",
+      "name": "Audit Tech Stack & SEO/GEO",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        140,
-        180
+        160,
+        300
       ]
     },
     {
       "parameters": {
-        "jsCode": "const minOps = Number($('Set Prospect Domains').first()?.json?.minOpportunities ?? 1);\n\nconst PITCH_LABELS = {\n  MISSING_META_PIXEL_ON_ECOMMERCE: 'Missing Meta Pixel on e-commerce store',\n  ECOMMERCE_WITHOUT_EMAIL_MARKETING_CRM: 'E-commerce store without email/CRM automation',\n  NO_WEB_ANALYTICS_DETECTED: 'No web analytics detected',\n  NO_PAID_AD_PIXELS_DETECTED: 'No paid ad pixels installed',\n  AD_PIXELS_WITHOUT_DETECTED_CMP_BANNER: 'Running ad pixels without detected consent banner',\n  MISSING_LLMS_TXT_FOR_AI_SEARCH: 'Missing /llms.txt for AI search visibility',\n  AI_SEARCH_CRAWLERS_BLOCKED_IN_ROBOTS: 'Blocking AI search crawlers in robots.txt',\n  MISSING_DMARC_EMAIL_SECURITY: 'Missing DMARC email authentication record',\n  MISSING_SPF_EMAIL_SECURITY: 'Missing SPF record',\n  SSL_CERTIFICATE_EXPIRING_SOON: 'SSL certificate expiring within 21 days',\n  INVALID_OR_MISSING_SSL_CERTIFICATE: 'Invalid or missing SSL certificate',\n  HOMEPAGE_SET_TO_NOINDEX: 'Homepage accidentally set to noindex',\n  MISSING_JSON_LD_STRUCTURED_DATA: 'Missing JSON-LD structured schema',\n  WEAK_HTTP_SECURITY_HEADERS: 'Weak HTTP security headers (<50/100)',\n  SLOW_SERVER_TTFB_OVER_1500MS: 'Slow server TTFB (>1.5s)'\n};\n\nconst auditsByDomain = {};\nconst qualifiedDomains = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row || row.status !== 'analyzed' || !row.domain) continue;\n\n  const ops = Array.isArray(row.salesOpportunities) ? row.salesOpportunities : [];\n  if (ops.length < minOps) continue;\n\n  const domainKey = String(row.domain).toLowerCase().trim();\n  if (auditsByDomain[domainKey]) continue;\n\n  const readablePitch = ops\n    .slice(0, 3)\n    .map((flag) => PITCH_LABELS[flag] || flag)\n    .join('; ');\n\n  auditsByDomain[domainKey] = {\n    domain: domainKey,\n    finalUrl: row.finalUrl || null,\n    cms: row.cms || null,\n    ecommercePlatform: row.ecommercePlatform || null,\n    hostingOrCdn: row.hostingOrCdn || null,\n    technologyCount: row.technologyCount ?? 0,\n    adPixels: row.marketingSignals?.adPixels || [],\n    crmTools: row.marketingSignals?.crmTools || [],\n    seoScore: row.seo?.seoScore ?? null,\n    geoReadinessScore: row.geo?.geoReadinessScore ?? null,\n    hasLlmsTxt: row.geo?.hasLlmsTxt ?? null,\n    blockedAiBots: row.geo?.blockedAiBots || [],\n    sslDaysUntilExpiry: row.ssl?.daysUntilExpiry ?? null,\n    hasDmarc: row.dns?.hasDmarc ?? null,\n    salesOpportunities: ops,\n    pitchSummary: readablePitch\n  };\n  qualifiedDomains.push(domainKey);\n}\n\nif (qualifiedDomains.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    domains: qualifiedDomains,\n    qualifiedCount: qualifiedDomains.length,\n    auditsByDomain\n  }\n}];"
+        "jsCode": "const minOps = Number($('Configure Prospect Domains').first()?.json?.minOpportunities ?? 1);\n\nconst PITCH_LABELS = {\n  MISSING_META_PIXEL_ON_ECOMMERCE: 'Missing Meta Pixel on e-commerce store',\n  ECOMMERCE_WITHOUT_EMAIL_MARKETING_CRM: 'E-commerce store without email/CRM automation',\n  NO_WEB_ANALYTICS_DETECTED: 'No web analytics detected',\n  NO_PAID_AD_PIXELS_DETECTED: 'No paid ad pixels installed',\n  AD_PIXELS_WITHOUT_DETECTED_CMP_BANNER: 'Running ad pixels without detected consent banner',\n  MISSING_LLMS_TXT_FOR_AI_SEARCH: 'Missing /llms.txt for AI search visibility',\n  AI_SEARCH_CRAWLERS_BLOCKED_IN_ROBOTS: 'Blocking AI search crawlers in robots.txt',\n  MISSING_DMARC_EMAIL_SECURITY: 'Missing DMARC email authentication record',\n  MISSING_SPF_EMAIL_SECURITY: 'Missing SPF record',\n  SSL_CERTIFICATE_EXPIRING_SOON: 'SSL certificate expiring within 21 days',\n  INVALID_OR_MISSING_SSL_CERTIFICATE: 'Invalid or missing SSL certificate',\n  HOMEPAGE_SET_TO_NOINDEX: 'Homepage accidentally set to noindex',\n  MISSING_JSON_LD_STRUCTURED_DATA: 'Missing JSON-LD structured schema',\n  WEAK_HTTP_SECURITY_HEADERS: 'Weak HTTP security headers (<50/100)',\n  SLOW_SERVER_TTFB_OVER_1500MS: 'Slow server TTFB (>1.5s)'\n};\n\nconst auditsByDomain = {};\nconst qualifiedDomains = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row || row.status !== 'analyzed' || !row.domain) continue;\n\n  const ops = Array.isArray(row.salesOpportunities) ? row.salesOpportunities : [];\n  if (ops.length < minOps) continue;\n\n  const domainKey = String(row.domain).toLowerCase().trim();\n  if (auditsByDomain[domainKey]) continue;\n\n  const readablePitch = ops\n    .slice(0, 3)\n    .map((flag) => PITCH_LABELS[flag] || flag)\n    .join('; ');\n\n  auditsByDomain[domainKey] = {\n    domain: domainKey,\n    finalUrl: row.finalUrl || null,\n    cms: row.cms || null,\n    ecommercePlatform: row.ecommercePlatform || null,\n    hostingOrCdn: row.hostingOrCdn || null,\n    technologyCount: row.technologyCount ?? 0,\n    adPixels: row.marketingSignals?.adPixels || [],\n    crmTools: row.marketingSignals?.crmTools || [],\n    seoScore: row.seo?.seoScore ?? null,\n    geoReadinessScore: row.geo?.geoReadinessScore ?? null,\n    hasLlmsTxt: row.geo?.hasLlmsTxt ?? null,\n    blockedAiBots: row.geo?.blockedAiBots || [],\n    sslDaysUntilExpiry: row.ssl?.daysUntilExpiry ?? null,\n    hasDmarc: row.dns?.hasDmarc ?? null,\n    salesOpportunities: ops,\n    pitchSummary: readablePitch\n  };\n  qualifiedDomains.push(domainKey);\n}\n\nif (qualifiedDomains.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    domains: qualifiedDomains,\n    qualifiedCount: qualifiedDomains.length,\n    auditsByDomain\n  }\n}];"
       },
       "id": "code-qualify",
-      "name": "Qualify Agency Leads (Filter Sales Opportunities)",
+      "name": "Filter Qualified Agency Leads",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        400,
-        180
+        460,
+        300
       ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -128,94 +156,78 @@
         }
       },
       "id": "http-actor1-enrich",
-      "name": "Enrich Verified Decision-Makers (Actor #1)",
+      "name": "Enrich Verified Decision-Makers",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        680,
-        180
+        740,
+        300
       ]
     },
     {
       "parameters": {
-        "jsCode": "const auditsByDomain = $('Qualify Agency Leads (Filter Sales Opportunities)').first()?.json?.auditsByDomain || {};\nconst output = [];\n\nfor (const item of $input.all()) {\n  const lead = item.json;\n  if (!lead || lead.status !== 'enriched' || !lead.domain) continue;\n\n  const domainKey = String(lead.domain).toLowerCase().trim();\n  const audit = auditsByDomain[domainKey] || {};\n\n  const verifiedDms = Array.isArray(lead.decisionMakers)\n    ? lead.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const baseFields = {\n    domain: domainKey,\n    companyName: lead.companyName || domainKey,\n    cms: audit.cms ?? null,\n    ecommercePlatform: audit.ecommercePlatform ?? null,\n    technologyCount: audit.technologyCount ?? 0,\n    seoScore: audit.seoScore ?? null,\n    geoReadinessScore: audit.geoReadinessScore ?? null,\n    hasLlmsTxt: audit.hasLlmsTxt ?? null,\n    blockedAiBots: (audit.blockedAiBots || []).join(', '),\n    sslDaysUntilExpiry: audit.sslDaysUntilExpiry ?? null,\n    salesOpportunities: (audit.salesOpportunities || []).join(', '),\n    pitchSummary: audit.pitchSummary || '',\n    emailProvider: lead.dns?.emailProvider || null,\n    hasMx: lead.dns?.hasMx ?? false,\n    hasDmarc: lead.dns?.hasDmarc ?? false,\n    primaryPhone: Array.isArray(lead.phones) && lead.phones.length > 0 ? lead.phones[0] : null,\n    companyLinkedin: lead.socials?.linkedin || null,\n    extractedAtUtc: lead.extractedAtUtc || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      output.push({\n        json: {\n          ...baseFields,\n          contactType: 'verified_decision_maker',\n          contactName: dm.fullName,\n          contactRole: dm.role,\n          contactEmail: dm.email,\n          contactLinkedin: dm.linkedinUrl || null,\n          emailSource: dm.emailSource,\n          sourceUrl: dm.sourceUrl || lead.sourceUrl || null,\n          confidence: dm.confidence\n        }\n      });\n    }\n  } else if (lead.primaryEmail) {\n    output.push({\n      json: {\n        ...baseFields,\n        contactType: 'company_primary_email',\n        contactName: null,\n        contactRole: null,\n        contactEmail: lead.primaryEmail,\n        contactLinkedin: null,\n        emailSource: 'published_company_email',\n        sourceUrl: lead.sourceUrl || null,\n        confidence: lead.confidence ?? 0\n      }\n    });\n  }\n}\n\nreturn output;"
+        "jsCode": "const auditsByDomain = $('Filter Qualified Agency Leads').first()?.json?.auditsByDomain || {};\nconst output = [];\n\nfor (const item of $input.all()) {\n  const lead = item.json;\n  if (!lead || lead.status !== 'enriched' || !lead.domain) continue;\n\n  const domainKey = String(lead.domain).toLowerCase().trim();\n  const audit = auditsByDomain[domainKey] || {};\n\n  const verifiedDms = Array.isArray(lead.decisionMakers)\n    ? lead.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const baseFields = {\n    domain: domainKey,\n    companyName: lead.companyName || domainKey,\n    cms: audit.cms ?? null,\n    ecommercePlatform: audit.ecommercePlatform ?? null,\n    technologyCount: audit.technologyCount ?? 0,\n    seoScore: audit.seoScore ?? null,\n    geoReadinessScore: audit.geoReadinessScore ?? null,\n    hasLlmsTxt: audit.hasLlmsTxt ?? null,\n    blockedAiBots: (audit.blockedAiBots || []).join(', '),\n    sslDaysUntilExpiry: audit.sslDaysUntilExpiry ?? null,\n    salesOpportunities: (audit.salesOpportunities || []).join(', '),\n    pitchSummary: audit.pitchSummary || '',\n    emailProvider: lead.dns?.emailProvider || null,\n    hasMx: lead.dns?.hasMx ?? false,\n    hasDmarc: lead.dns?.hasDmarc ?? false,\n    primaryPhone: Array.isArray(lead.phones) && lead.phones.length > 0 ? lead.phones[0] : null,\n    companyLinkedin: lead.socials?.linkedin || null,\n    extractedAtUtc: lead.extractedAtUtc || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      output.push({\n        json: {\n          ...baseFields,\n          contactType: 'verified_decision_maker',\n          contactName: dm.fullName,\n          contactRole: dm.role,\n          contactEmail: dm.email,\n          contactLinkedin: dm.linkedinUrl || null,\n          emailSource: dm.emailSource,\n          sourceUrl: dm.sourceUrl || lead.sourceUrl || null,\n          confidence: dm.confidence\n        }\n      });\n    }\n  } else if (lead.primaryEmail) {\n    output.push({\n      json: {\n        ...baseFields,\n        contactType: 'company_primary_email',\n        contactName: null,\n        contactRole: null,\n        contactEmail: lead.primaryEmail,\n        contactLinkedin: null,\n        emailSource: 'published_company_email',\n        sourceUrl: lead.sourceUrl || null,\n        confidence: lead.confidence ?? 0\n      }\n    });\n  }\n}\n\nreturn output;"
       },
       "id": "code-merge-crm",
-      "name": "Merge Audit + Verified Contacts (CRM Ready)",
+      "name": "Merge Audit & Verified Contacts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        180
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## Connect Your Destination\nAttach **Google Sheets**, **HubSpot**, **Smartlead**, **Instantly**, or **Clay Webhook** directly after `Merge Audit + Verified Contacts (CRM Ready)`.\n\nEach row already includes:\n- `contactEmail` (MX-verified, never guessed)\n- `contactName` & `contactRole`\n- `sourceUrl` (GDPR Art. 14 provenance)\n- `pitchSummary` (exact technical gaps found on their site)",
-        "height": 240,
-        "width": 360,
-        "color": 6
-      },
-      "id": "note-destination",
-      "name": "CRM Export Notes",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        920,
-        -120
+        1020,
+        300
       ]
     }
   ],
   "connections": {
-    "When clicking 'Test workflow'": {
+    "Manual Trigger": {
       "main": [
         [
           {
-            "node": "Set Prospect Domains",
+            "node": "Configure Prospect Domains",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Set Prospect Domains": {
+    "Configure Prospect Domains": {
       "main": [
         [
           {
-            "node": "Audit Tech Stack & SEO/GEO (Actor #2)",
+            "node": "Audit Tech Stack & SEO/GEO",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Audit Tech Stack & SEO/GEO (Actor #2)": {
+    "Audit Tech Stack & SEO/GEO": {
       "main": [
         [
           {
-            "node": "Qualify Agency Leads (Filter Sales Opportunities)",
+            "node": "Filter Qualified Agency Leads",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Qualify Agency Leads (Filter Sales Opportunities)": {
+    "Filter Qualified Agency Leads": {
       "main": [
         [
           {
-            "node": "Enrich Verified Decision-Makers (Actor #1)",
+            "node": "Enrich Verified Decision-Makers",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Enrich Verified Decision-Makers (Actor #1)": {
+    "Enrich Verified Decision-Makers": {
       "main": [
         [
           {
-            "node": "Merge Audit + Verified Contacts (CRM Ready)",
+            "node": "Merge Audit & Verified Contacts",
             "type": "main",
             "index": 0
           }

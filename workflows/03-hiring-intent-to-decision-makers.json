@@ -1,0 +1,260 @@
+{
+  "name": "B2B Buying-Intent Pipeline: Detect Actively Hiring Companies (ATS) -> Enrich Verified Decision-Makers",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "### How it works\nThis workflow finds B2B accounts with active hiring budgets right now before you spend outreach credits. First, it queries Apify's Company Career Page & ATS Hiring-Intent Finder across your target domain list to automatically discover Greenhouse, Ashby, Lever, SmartRecruiters, Workable, Recruitee, and JSON-LD job boards, extracting open roles, hiring velocity, internal tech stack mentions, and deterministic `hiringIntentSignals`. Next, it filters for accounts matching your target hiring signals (such as `HIRING_SALES_GROWTH`, `HIRING_MARKETING_SEO_GEO`, or `HIRING_AI_ML_ENGINEERING`). Finally, it enriches only those actively hiring accounts with verified corporate emails and decision-makers.\n\n### Setup\n1. Copy your Apify API token from Apify Console -> Settings -> Integrations.\n2. In both HTTP Request nodes, select **Generic Credential Type -> HTTP Bearer Auth** and attach your Apify API token credential.\n3. Edit `domains` and `targetSignals` in **Configure Target Accounts & Signals**.\n4. Connect Google Sheets, HubSpot, Clay, or Slack after **Merge Hiring Signals & Contacts**.\n\n### Customization\n- Change `targetSignals` to filter for `HIRING_ECOMMERCE_RETAIL`, `HIRING_SECURITY_COMPLIANCE`, `HIRING_DEVOPS_CLOUD`, or `RAPID_HIRING_SURGE`.\n- Set `remoteOnly: true` in the Hiring-Intent request body to track remote-first teams only.",
+        "height": 540,
+        "width": 440,
+        "color": 4
+      },
+      "id": "note-overview-3",
+      "name": "Overview & Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Scan Company ATS & Hiring Signals\nProbes public Greenhouse, Ashby, Lever, Workable, SmartRecruiters & Recruitee boards.",
+        "height": 280,
+        "width": 760,
+        "color": 7
+      },
+      "id": "note-s1-3",
+      "name": "Stage 1 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Filter High-Intent Accounts & Enrich Contacts\nEnriches only accounts actively hiring in your target departments.",
+        "height": 280,
+        "width": 860,
+        "color": 6
+      },
+      "id": "note-s2-3",
+      "name": "Stage 2 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-3",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "domains-3",
+              "name": "domains",
+              "value": "={{ [\"stripe.com\", \"linear.app\", \"posthog.com\", \"palantir.com\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "signals-3",
+              "name": "targetSignals",
+              "value": "={{ [\"HIRING_SALES_GROWTH\", \"HIRING_MARKETING_SEO_GEO\", \"HIRING_AI_ML_ENGINEERING\"] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-targets-3",
+      "name": "Configure Target Accounts & Signals",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~company-hiring-intent-ats-jobs-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxJobsPerCompany: 25, includeJobDescriptions: false, includeEmptyDomainsInDataset: false, concurrency: 15, requestTimeoutMs: 8000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-actor3",
+      "name": "Scan Company ATS & Open Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const targetSignals = new Set($('Configure Target Accounts & Signals').first()?.json?.targetSignals || []);\nconst hiringByDomain = {};\nconst qualifiedDomains = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row || row.status !== 'hiring' || !row.domain) continue;\n  const signals = Array.isArray(row.hiringIntentSignals) ? row.hiringIntentSignals : [];\n  const matches = targetSignals.size === 0 ? signals : signals.filter((s) => targetSignals.has(s));\n  if (matches.length === 0) continue;\n\n  const key = String(row.domain).toLowerCase().trim();\n  if (hiringByDomain[key]) continue;\n  hiringByDomain[key] = {\n    domain: key,\n    atsProvider: row.atsProvider,\n    careersUrl: row.careersUrl,\n    openRolesCount: row.openRolesCount ?? 0,\n    matchedSignals: matches,\n    allSignals: signals,\n    techStackFromJobs: (row.techStackFromJobs || []).slice(0, 10),\n    postedLast14Days: row.velocity?.postedLast14Days ?? 0,\n    sampleRoles: (row.jobs || []).slice(0, 3).map((j) => j.title)\n  };\n  qualifiedDomains.push(key);\n}\n\nif (qualifiedDomains.length === 0) return [];\n\nreturn [{\n  json: {\n    domains: qualifiedDomains,\n    qualifiedCount: qualifiedDomains.length,\n    hiringByDomain\n  }\n}];"
+      },
+      "id": "code-filter-hiring",
+      "name": "Filter Accounts Matching Hiring Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxPagesPerDomain: 6, verifyDns: true, extractDecisionMakers: true, inferPatternEmails: false, includeEmptyDomainsInDataset: false, concurrency: 20, requestTimeoutMs: 7000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-actor1-3",
+      "name": "Enrich Verified Decision-Makers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const hiringByDomain = $('Filter Accounts Matching Hiring Intent').first()?.json?.hiringByDomain || {};\nconst output = [];\n\nfor (const item of $input.all()) {\n  const lead = item.json;\n  if (!lead || lead.status !== 'enriched' || !lead.domain) continue;\n  const key = String(lead.domain).toLowerCase().trim();\n  const hiring = hiringByDomain[key] || {};\n\n  const verifiedDms = Array.isArray(lead.decisionMakers)\n    ? lead.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  const base = {\n    domain: key,\n    companyName: lead.companyName || key,\n    atsProvider: hiring.atsProvider || null,\n    careersUrl: hiring.careersUrl || null,\n    openRolesCount: hiring.openRolesCount ?? 0,\n    postedLast14Days: hiring.postedLast14Days ?? 0,\n    matchedSignals: (hiring.matchedSignals || []).join(', '),\n    internalTechFromJobs: (hiring.techStackFromJobs || []).join(', '),\n    sampleOpenRoles: (hiring.sampleRoles || []).join(' | '),\n    emailProvider: lead.dns?.emailProvider || null,\n    hasMx: lead.dns?.hasMx ?? false,\n    companyLinkedin: lead.socials?.linkedin || null\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      output.push({\n        json: {\n          ...base,\n          contactType: 'verified_decision_maker',\n          contactName: dm.fullName,\n          contactRole: dm.role,\n          contactEmail: dm.email,\n          sourceUrl: dm.sourceUrl || lead.sourceUrl || null\n        }\n      });\n    }\n  } else if (lead.primaryEmail) {\n    output.push({\n      json: {\n        ...base,\n        contactType: 'company_primary_email',\n        contactName: null,\n        contactRole: null,\n        contactEmail: lead.primaryEmail,\n        sourceUrl: lead.sourceUrl || null\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "id": "code-merge-3",
+      "name": "Merge Hiring Signals & Contacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configure Target Accounts & Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure Target Accounts & Signals": {
+      "main": [
+        [
+          {
+            "node": "Scan Company ATS & Open Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Company ATS & Open Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter Accounts Matching Hiring Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Accounts Matching Hiring Intent": {
+      "main": [
+        [
+          {
+            "node": "Enrich Verified Decision-Makers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Verified Decision-Makers": {
+      "main": [
+        [
+          {
+            "node": "Merge Hiring Signals & Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "apify"
+    },
+    {
+      "name": "hiring-intent"
+    },
+    {
+      "name": "lead-generation"
+    },
+    {
+      "name": "b2b"
+    }
+  ]
+}

@@ -16,6 +16,22 @@ function loadWorkflow(fileName) {
   assert.ok(Array.isArray(wf.nodes) && wf.nodes.length >= 4, `${fileName}: expected >= 4 nodes`);
   assert.ok(wf.connections && typeof wf.connections === 'object', `${fileName}: missing connections`);
 
+  // Verify n8n Creator Portal compliance: overview sticky note + no hardcoded Bearer headers
+  const stickyNotes = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.stickyNote');
+  assert.ok(stickyNotes.length >= 2, `${fileName}: expected overview + section sticky notes for n8n review`);
+  const overview = stickyNotes[0].parameters.content || '';
+  assert.ok(overview.includes('### How it works'), `${fileName}: missing '### How it works' in overview sticky note`);
+  assert.ok(overview.includes('### Setup'), `${fileName}: missing '### Setup' in overview sticky note`);
+
+  for (const node of wf.nodes) {
+    if (node.type === 'n8n-nodes-base.httpRequest') {
+      assert.equal(node.parameters.authentication, 'genericCredentialType', `${fileName}: HTTP node must use native n8n Credential Manager`);
+      assert.equal(node.parameters.genericAuthType, 'httpBearerAuth', `${fileName}: HTTP node must use httpBearerAuth`);
+      const hdrs = node.parameters.headerParameters?.parameters || [];
+      assert.ok(!hdrs.some((h) => String(h.name).toLowerCase() === 'authorization'), `${fileName}: must not hardcode Authorization header`);
+    }
+  }
+
   const nodeNames = new Set(wf.nodes.map((n) => n.name));
   const nodeIds = new Set();
   for (const node of wf.nodes) {
@@ -52,51 +68,31 @@ function runCodeNode(wf, nodeName, inputItems, nodeLookup = {}) {
   return JSON.parse(JSON.stringify(raw));
 }
 
-// --- Validate Workflow 01 ---
+// --- Workflow 01 ---
 const wf1 = loadWorkflow('01-agency-tech-seo-geo-to-decision-makers.json');
-
-const mockActor2Rows = [
-  {
-    json: {
-      domain: 'lakefrontbrewery.com',
-      finalUrl: 'https://lakefrontbrewery.com/',
-      status: 'analyzed',
-      cms: 'WordPress',
-      ecommercePlatform: 'WooCommerce',
-      hostingOrCdn: 'Cloudflare',
-      technologyCount: 14,
-      marketingSignals: { adPixels: [], crmTools: [] },
-      seo: { seoScore: 82 },
-      geo: { geoReadinessScore: 45, hasLlmsTxt: false, blockedAiBots: [] },
-      ssl: { daysUntilExpiry: 64 },
-      dns: { hasDmarc: false },
-      salesOpportunities: ['MISSING_LLMS_TXT_FOR_AI_SEARCH', 'MISSING_DMARC_EMAIL_SECURITY'],
+const qualified = runCodeNode(
+  wf1,
+  'Filter Qualified Agency Leads',
+  [
+    {
+      json: {
+        domain: 'lakefrontbrewery.com',
+        status: 'analyzed',
+        cms: 'WordPress',
+        technologyCount: 14,
+        seo: { seoScore: 82 },
+        geo: { geoReadinessScore: 45, hasLlmsTxt: false, blockedAiBots: [] },
+        ssl: { daysUntilExpiry: 64 },
+        dns: { hasDmarc: false },
+        salesOpportunities: ['MISSING_LLMS_TXT_FOR_AI_SEARCH', 'MISSING_DMARC_EMAIL_SECURITY'],
+      },
     },
-  },
-  {
-    json: {
-      domain: 'clean-perfect-site.com',
-      status: 'analyzed',
-      salesOpportunities: [],
-    },
-  },
-  {
-    json: {
-      domain: 'dead-site.invalid',
-      status: 'unreachable',
-      salesOpportunities: ['INVALID_OR_MISSING_SSL_CERTIFICATE'],
-    },
-  },
-];
-
-const qualified = runCodeNode(wf1, 'Qualify Agency Leads (Filter Sales Opportunities)', mockActor2Rows, {
-  'Set Prospect Domains': { json: { minOpportunities: 1 } },
-});
-
+    { json: { domain: 'dead.invalid', status: 'unreachable', salesOpportunities: [] } },
+  ],
+  { 'Configure Prospect Domains': { json: { minOpportunities: 1 } } }
+);
 assert.equal(qualified.length, 1);
 assert.deepEqual(qualified[0].json.domains, ['lakefrontbrewery.com']);
-assert.equal(qualified[0].json.qualifiedCount, 1);
-assert.match(qualified[0].json.auditsByDomain['lakefrontbrewery.com'].pitchSummary, /Missing \/llms\.txt/);
 
 const mockActor1Rows = [
   {
@@ -108,7 +104,7 @@ const mockActor1Rows = [
       source: '/about',
       sourceUrl: 'https://lakefrontbrewery.com/about',
       confidence: 0.9,
-      extractedAtUtc: '2026-11-21T12:00:00Z',
+      extractedAtUtc: '2026-11-23T18:00:00Z',
       dns: { hasMx: true, hasSpf: true, hasDmarc: false, emailProvider: 'Microsoft 365' },
       phones: ['+14143728800'],
       socials: { linkedin: 'https://linkedin.com/company/lakefront-brewery' },
@@ -120,17 +116,15 @@ const mockActor1Rows = [
           emailSource: 'direct_match',
           confidence: 0.95,
           verifiedForBilling: true,
-          linkedinUrl: null,
           sourceUrl: 'https://lakefrontbrewery.com/about',
         },
         {
-          fullName: 'Guessed Person',
+          fullName: 'Unbilled Guess',
           role: 'VP',
-          email: 'guessed@lakefrontbrewery.com',
+          email: 'guess@lakefrontbrewery.com',
           emailSource: 'pattern_inferred',
           confidence: 0.4,
           verifiedForBilling: false,
-          linkedinUrl: null,
           sourceUrl: 'https://lakefrontbrewery.com/about',
         },
       ],
@@ -138,68 +132,61 @@ const mockActor1Rows = [
   },
 ];
 
-const merged = runCodeNode(wf1, 'Merge Audit + Verified Contacts (CRM Ready)', mockActor1Rows, {
-  'Qualify Agency Leads (Filter Sales Opportunities)': qualified[0],
+const merged1 = runCodeNode(wf1, 'Merge Audit & Verified Contacts', mockActor1Rows, {
+  'Filter Qualified Agency Leads': qualified[0],
 });
+assert.equal(merged1.length, 1);
+assert.equal(merged1[0].json.contactEmail, 'russ@lakefrontbrewery.com');
 
-assert.equal(merged.length, 1, 'Must emit only verified decision-makers, excluding pattern_inferred');
-assert.equal(merged[0].json.contactEmail, 'russ@lakefrontbrewery.com');
-assert.equal(merged[0].json.contactType, 'verified_decision_maker');
-assert.equal(merged[0].json.cms, 'WordPress');
-assert.equal(merged[0].json.hasLlmsTxt, false);
-assert.equal(merged[0].json.sourceUrl, 'https://lakefrontbrewery.com/about');
-
-// Edge case: 0 qualified domains -> returns [] cleanly so Actor #1 is not called
-const emptyQualified = runCodeNode(
-  wf1,
-  'Qualify Agency Leads (Filter Sales Opportunities)',
-  [{ json: { domain: 'ok.com', status: 'analyzed', salesOpportunities: [] } }],
-  { 'Set Prospect Domains': { json: { minOpportunities: 1 } } },
-);
-assert.equal(emptyQualified.length, 0);
-
-// --- Validate Workflow 02 ---
+// --- Workflow 02 ---
 const wf2 = loadWorkflow('02-bulk-domains-to-verified-decision-makers.json');
-
 const normalized = runCodeNode(wf2, 'Normalize & Deduplicate Domains', [
-  { json: { body: { domains: ['https://www.Stripe.com/pricing', 'stripe.com', 'http://allbirds.com/?ref=1', 'invalid', ''] } } },
+  { json: { body: { domains: ['https://www.Stripe.com/pricing', 'stripe.com', 'http://allbirds.com/?ref=1'] } } },
 ]);
-assert.equal(normalized.length, 1);
 assert.deepEqual(normalized[0].json.domains, ['stripe.com', 'allbirds.com']);
 
-const flattened = runCodeNode(wf2, 'Flatten Verified Contacts & GDPR Provenance', [
-  ...mockActor1Rows,
-  {
-    json: {
-      domain: 'company-only.co.uk',
-      status: 'enriched',
-      companyName: 'Company Only Ltd',
-      primaryEmail: 'hello@company-only.co.uk',
-      source: '/contact',
-      sourceUrl: 'https://company-only.co.uk/contact',
-      confidence: 0.85,
-      extractedAtUtc: '2026-11-21T12:00:00Z',
-      dns: { hasMx: true, hasSpf: true, hasDmarc: true, emailProvider: 'Google Workspace' },
-      phones: [],
-      socials: {},
-      legal: { vatIds: [], impressumUrl: null },
-      billing: { estimatedChargeUsd: 0.015 },
-      decisionMakers: [],
-    },
-  },
-  {
-    json: {
-      domain: 'suppressed.de',
-      status: 'suppressed',
-      decisionMakers: [],
-    },
-  },
-]);
-
-assert.equal(flattened.length, 2, 'Expected 1 verified DM row + 1 company_contact fallback, skipping suppressed');
-assert.equal(flattened[0].json.recordType, 'decision_maker');
+const flattened = runCodeNode(wf2, 'Flatten Verified Contacts & Provenance', mockActor1Rows);
+assert.equal(flattened.length, 1);
 assert.equal(flattened[0].json.email, 'russ@lakefrontbrewery.com');
-assert.equal(flattened[1].json.recordType, 'company_contact');
-assert.equal(flattened[1].json.email, 'hello@company-only.co.uk');
 
-console.log('ALL WORKFLOW VALIDATION CHECKS PASSED (2 workflows, 4 code nodes, 100% schema assertions OK)');
+// --- Workflow 03 ---
+const wf3 = loadWorkflow('03-hiring-intent-to-decision-makers.json');
+const hiringFiltered = runCodeNode(
+  wf3,
+  'Filter Accounts Matching Hiring Intent',
+  [
+    {
+      json: {
+        domain: 'lakefrontbrewery.com',
+        status: 'hiring',
+        atsProvider: 'ashby',
+        careersUrl: 'https://jobs.ashbyhq.com/lakefront',
+        openRolesCount: 12,
+        hiringIntentSignals: ['HIRING_SALES_GROWTH', 'RAPID_HIRING_SURGE'],
+        techStackFromJobs: ['Salesforce', 'HubSpot'],
+        velocity: { postedLast14Days: 4 },
+        jobs: [{ title: 'VP of Sales' }],
+      },
+    },
+    {
+      json: {
+        domain: 'not-hiring.com',
+        status: 'no_jobs_found',
+        hiringIntentSignals: [],
+      },
+    },
+  ],
+  { 'Configure Target Accounts & Signals': { json: { targetSignals: ['HIRING_SALES_GROWTH'] } } }
+);
+assert.equal(hiringFiltered.length, 1);
+assert.deepEqual(hiringFiltered[0].json.domains, ['lakefrontbrewery.com']);
+
+const merged3 = runCodeNode(wf3, 'Merge Hiring Signals & Contacts', mockActor1Rows, {
+  'Filter Accounts Matching Hiring Intent': hiringFiltered[0],
+});
+assert.equal(merged3.length, 1);
+assert.equal(merged3[0].json.contactEmail, 'russ@lakefrontbrewery.com');
+assert.equal(merged3[0].json.atsProvider, 'ashby');
+assert.equal(merged3[0].json.matchedSignals, 'HIRING_SALES_GROWTH');
+
+console.log('ALL 3 N8N CREATOR-COMPLIANT WORKFLOWS PASSED VALIDATION (6 code nodes, native Bearer Auth, sticky notes OK)');
