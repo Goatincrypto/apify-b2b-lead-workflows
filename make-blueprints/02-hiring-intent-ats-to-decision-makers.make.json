@@ -1,0 +1,163 @@
+{
+  "name": "AegisAudit: ATS Hiring-Intent Finder -> Verified Decision-Makers",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "notes": "Send POST JSON {\"domains\": [\"stripe.com\", \"linear.app\", \"posthog.com\"]} or swap this trigger for Google Sheets / HubSpot."
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~company-hiring-intent-ats-jobs-finder/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"domains\": {{1.domains}}, \"maxJobsPerCompany\": 50, \"includeJobDescriptions\": false, \"includeEmptyDomainsInDataset\": false, \"concurrency\": 15, \"requestTimeoutMs\": 8000}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "notes": "Stage 1: Auto-discover Greenhouse, Ashby, Lever, SmartRecruiters, Workable, Recruitee & JSON-LD boards ($0 when no open jobs)."
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{2.data}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        },
+        "notes": "Iterate actively hiring companies returned by the ATS Hiring-Intent Finder."
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "filter": {
+        "name": "Actively hiring with >= 1 intent signal",
+        "conditions": [
+          [
+            {
+              "a": "{{3.status}}",
+              "b": "hiring",
+              "o": "text:equal"
+            },
+            {
+              "a": "{{length(3.hiringIntentSignals)}}",
+              "b": "1",
+              "o": "number:greaterorequal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"domains\": [\"{{3.domain}}\"], \"maxPagesPerDomain\": 6, \"verifyDns\": true, \"extractDecisionMakers\": true, \"inferPatternEmails\": false, \"includeEmptyDomainsInDataset\": false}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 920,
+          "y": 0
+        },
+        "notes": "Stage 2: Enrich actively hiring accounts with verified decision-makers, phones & GDPR Art. 14 provenance. Connect HubSpot, Clay, Slack, or Google Sheets next."
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu1.make.com"
+  }
+}

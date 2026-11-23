@@ -189,4 +189,27 @@ assert.equal(merged3[0].json.contactEmail, 'russ@lakefrontbrewery.com');
 assert.equal(merged3[0].json.atsProvider, 'ashby');
 assert.equal(merged3[0].json.matchedSignals, 'HIRING_SALES_GROWTH');
 
-console.log('ALL 3 N8N CREATOR-COMPLIANT WORKFLOWS PASSED VALIDATION (6 code nodes, native Bearer Auth, sticky notes OK)');
+// --- Make.com Blueprints Validation ---
+const makeDir = path.resolve(__dirname, '..', 'make-blueprints');
+const makeFiles = [
+  '01-agency-tech-seo-geo-to-decision-makers.make.json',
+  '02-hiring-intent-ats-to-decision-makers.make.json',
+];
+for (const mf of makeFiles) {
+  const raw = fs.readFileSync(path.join(makeDir, mf), 'utf8');
+  const bp = JSON.parse(raw);
+  assert.ok(typeof bp.name === 'string' && bp.name.length > 5, `${mf}: missing name`);
+  assert.ok(Array.isArray(bp.flow) && bp.flow.length >= 4, `${mf}: expected >= 4 modules`);
+  assert.ok(bp.metadata && typeof bp.metadata === 'object', `${mf}: missing metadata`);
+  assert.ok(!raw.includes('apify_api_'), `${mf}: leaked real Apify API token`);
+  const httpMods = bp.flow.filter((m) => m.module === 'http:ActionSendData');
+  assert.equal(httpMods.length, 2, `${mf}: expected 2 HTTP modules`);
+  for (const hm of httpMods) {
+    assert.ok(
+      String(hm.mapper?.url || '').startsWith('https://api.apify.com/v2/acts/aegisaudit~'),
+      `${mf}: invalid Apify Actor URL`
+    );
+  }
+}
+
+console.log('ALL 3 N8N CREATOR-COMPLIANT WORKFLOWS + 2 MAKE.COM BLUEPRINTS PASSED VALIDATION');

@@ -1,0 +1,163 @@
+{
+  "name": "AegisAudit: Tech Stack & AI Search (GEO) Audit -> Verified Decision-Makers",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "notes": "Send POST JSON {\"domains\": [\"baremetrics.com\", \"allbirds.com\"]} or swap this trigger for Google Sheets -> Search Rows."
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~website-tech-stack-seo-audit/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"domains\": {{1.domains}}, \"checkSeoAndGeo\": true, \"checkDnsAndSsl\": true, \"includeFailedDomainsInDataset\": false, \"concurrency\": 20, \"requestTimeoutMs\": 8000}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "notes": "Stage 1: Audit 136 tech signatures, ad pixels, Technical SEO, /llms.txt, AI bots, SSL expiry & DMARC ($0 on unreachable domains)."
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{2.data}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        },
+        "notes": "Iterate each analyzed website row from the Apify dataset."
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "filter": {
+        "name": "Qualified agency leads only (salesOpportunities >= 1)",
+        "conditions": [
+          [
+            {
+              "a": "{{3.status}}",
+              "b": "analyzed",
+              "o": "text:equal"
+            },
+            {
+              "a": "{{length(3.salesOpportunities)}}",
+              "b": "1",
+              "o": "number:greaterorequal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"domains\": [\"{{3.domain}}\"], \"maxPagesPerDomain\": 6, \"verifyDns\": true, \"extractDecisionMakers\": true, \"inferPatternEmails\": false, \"includeEmptyDomainsInDataset\": false}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 920,
+          "y": 0
+        },
+        "notes": "Stage 2: Enrich ONLY qualified domains with MX-verified decision-makers, phones & GDPR Art. 14 sourceUrl provenance ($0 on empty sites). Attach Google Sheets, HubSpot, or Smartlead next."
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu1.make.com"
+  }
+}

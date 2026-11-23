@@ -26,7 +26,9 @@ Ready-to-import, zero-API-key automation templates chaining three pay-per-event 
 | [`workflows/01-agency-tech-seo-geo-to-decision-makers.json`](./workflows/01-agency-tech-seo-geo-to-decision-makers.json) | Scan prospect websites -> qualify only domains with real `salesOpportunities` -> enrich verified decision-makers -> output CRM-ready rows with `pitchSummary` and GDPR `sourceUrl`. | n8n (built-in nodes only) |
 | [`workflows/02-bulk-domains-to-verified-decision-makers.json`](./workflows/02-bulk-domains-to-verified-decision-makers.json) | Webhook/Google Maps/CSV list -> normalize & deduplicate domains -> enrich verified emails, phones & executives -> flatten CRM-ready output. | n8n (built-in nodes only) |
 | [`workflows/03-hiring-intent-to-decision-makers.json`](./workflows/03-hiring-intent-to-decision-makers.json) | Scan target accounts for active ATS hiring signals (`HIRING_SALES_GROWTH`, `HIRING_MARKETING_SEO_GEO`, `HIRING_AI_ML_ENGINEERING`) -> enrich only hiring accounts with verified decision-makers & internal tech stack from JDs. | n8n (built-in nodes only) |
-| [`guides/clay-and-make-setup.md`](./guides/clay-and-make-setup.md) | Copy-paste HTTP API columns for **Clay.com** and 4-module blueprint for **Make.com**. | Clay, Make |
+| [`make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json`](./make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json) | 1-click importable Make.com blueprint: Tech Stack + SEO/GEO Audit -> Filter qualified leads -> Verified Decision-Makers. | Make.com |
+| [`make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json`](./make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json) | 1-click importable Make.com blueprint: ATS Hiring-Intent Finder -> Filter hiring signals -> Verified Decision-Makers. | Make.com |
+| [`guides/clay-and-make-setup.md`](./guides/clay-and-make-setup.md) | Copy-paste HTTP API columns for **Clay.com** (all 3 Actors) and Make.com import guide. | Clay, Make |
 
 ---
 
