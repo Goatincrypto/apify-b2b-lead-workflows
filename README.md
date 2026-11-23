@@ -29,6 +29,7 @@ Ready-to-import, zero-API-key automation templates chaining three pay-per-event 
 | [`make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json`](./make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json) | 1-click importable Make.com blueprint: Tech Stack + SEO/GEO Audit -> Filter qualified leads -> Verified Decision-Makers. | Make.com |
 | [`make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json`](./make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json) | 1-click importable Make.com blueprint: ATS Hiring-Intent Finder -> Filter hiring signals -> Verified Decision-Makers. | Make.com |
 | [`guides/clay-and-make-setup.md`](./guides/clay-and-make-setup.md) | Copy-paste HTTP API columns for **Clay.com** (all 3 Actors) and Make.com import guide. | Clay, Make |
+| [`benchmarks/2026-BENCHMARK-REPORT.md`](./benchmarks/2026-BENCHMARK-REPORT.md) | **Free Live 100-Company Benchmark (CSV + Report):** 100 B2B/AI/FinTech/D2C domains scanned in 30.2s (8,479 open ATS roles, Ashby vs Greenhouse, `/llms.txt` adoption & internal GTM stack). | Open Dataset (CSV) |
 
 ---
 
