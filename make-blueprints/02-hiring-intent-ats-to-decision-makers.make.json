@@ -12,7 +12,7 @@
           "x": 0,
           "y": 0
         },
-        "notes": "Send POST JSON {\"domains\": [\"stripe.com\", \"linear.app\", \"posthog.com\"]} or swap this trigger for Google Sheets / HubSpot."
+        "notes": "Send POST JSON {\"domain\": \"stripe.com\"} or swap this trigger for Google Sheets / HubSpot (mapping {{1.domain}})."
       }
     },
     {
@@ -51,7 +51,7 @@
         "gzip": true,
         "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"domains\": {{1.domains}}, \"maxJobsPerCompany\": 50, \"includeJobDescriptions\": false, \"includeEmptyDomainsInDataset\": false, \"concurrency\": 15, \"requestTimeoutMs\": 8000}"
+        "data": "{\"domains\": [\"{{1.domain}}\"], \"maxJobsPerCompany\": 50, \"includeJobDescriptions\": false, \"includeEmptyDomainsInDataset\": false, \"concurrency\": 15, \"requestTimeoutMs\": 8000}"
       },
       "metadata": {
         "designer": {

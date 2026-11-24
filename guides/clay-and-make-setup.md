@@ -74,7 +74,7 @@ All three AegisAudit Apify Actors expose Apify's synchronous HTTP endpoint (`run
      "includeEmptyDomainsInDataset": true
    }
    ```
-4. Map `[0].atsProvider`, `[0].openJobsCount`, `[0].hiringVelocity.postedLast14Days`, `[0].hiringIntentSignals`, and `[0].techStackFromJobs` (60+ internal tools detected inside job descriptions).
+4. Map `[0].atsProvider`, `[0].openRolesCount`, `[0].velocity.postedLast14Days`, `[0].hiringIntentSignals`, and `[0].techStackFromJobs` (60+ internal tools detected inside job descriptions).
 5. **Cost control:** If a company has no open roles or no detectable ATS, Apify charges **$0.00**.
 
 ---

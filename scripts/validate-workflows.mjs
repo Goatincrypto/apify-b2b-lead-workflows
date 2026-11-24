@@ -209,6 +209,10 @@ for (const mf of makeFiles) {
       String(hm.mapper?.url || '').startsWith('https://api.apify.com/v2/acts/aegisaudit~'),
       `${mf}: invalid Apify Actor URL`
     );
+    // Validate Make.com raw JSON body parses cleanly when {{...}} tokens are replaced with dummy strings
+    const sampleData = String(hm.mapper?.data || '').replace(/\{\{[^}]+\}\}/g, 'example.com');
+    const parsedData = JSON.parse(sampleData);
+    assert.ok(Array.isArray(parsedData.domains) && parsedData.domains.length >= 1, `${mf}: domains must serialize as valid JSON array`);
   }
 }
 

@@ -12,7 +12,7 @@
           "x": 0,
           "y": 0
         },
-        "notes": "Send POST JSON {\"domains\": [\"baremetrics.com\", \"allbirds.com\"]} or swap this trigger for Google Sheets -> Search Rows."
+        "notes": "Send POST JSON {\"domain\": \"baremetrics.com\"} or swap this trigger for Google Sheets -> Search Rows (mapping {{1.domain}})."
       }
     },
     {
@@ -51,7 +51,7 @@
         "gzip": true,
         "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"domains\": {{1.domains}}, \"checkSeoAndGeo\": true, \"checkDnsAndSsl\": true, \"includeFailedDomainsInDataset\": false, \"concurrency\": 20, \"requestTimeoutMs\": 8000}"
+        "data": "{\"domains\": [\"{{1.domain}}\"], \"checkSeoAndGeo\": true, \"checkDnsAndSsl\": true, \"includeFailedDomainsInDataset\": false, \"concurrency\": 20, \"requestTimeoutMs\": 8000}"
       },
       "metadata": {
         "designer": {
