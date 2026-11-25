@@ -1,0 +1,181 @@
+{
+  "name": "OWASP MCP03 Tool-Poisoning & SHA-256 Rug-Pull Gate",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "### How it works\nThis automated gate protects your AI agents and CI/CD pipelines from poisoned or hijacked MCP servers. First, it calls Apify's MCP Server Security, Tool Poisoning & Rug-Pull Scanner across your configured `serverUrls` and optional `baselineHashes` SHA-256 map using strictly read-only `initialize` and `tools/list` handshakes (zero `tools/call`). Next, the Code node inspects OWASP MCP03/MCP06 findings (`HIDDEN_PROMPT_INJECTION`, `CREDENTIAL_OR_FILE_EXFILTRATION`, `TOOL_SHADOWING`, `STEALTH_UNICODE`), risk scores, and TOFU SHA-256 rug-pull drift (`rugPullDriftDetected`). Finally, it outputs normalized alert items you can route straight to Slack, Microsoft Teams, Jira, or PagerDuty.\n\n### Setup\n1. Copy your Apify API token from Apify Console -> Settings -> Integrations.\n2. In **Scan MCP Servers (OWASP + TOFU)**, select **Generic Credential Type -> HTTP Bearer Auth** and attach your Apify API token credential.\n3. Edit `serverUrls` and `baselineHashes` inside **Configure MCP Endpoints & Pinned Hashes**.\n4. Optionally swap **Manual Trigger** for a **Schedule Trigger** (daily) and attach Slack or Email after **Evaluate MCP Security & Rug-Pull Alerts**.\n\n### Customization\n- Set `alertOnCautionOnly: false` to trigger alerts only on `DANGEROUS` verdicts, critical findings, or TOFU `rugPullDriftDetected`.\n- Copy `manifestHashSha256` from the first clean run into `baselineHashes` to lock in zero-drift monitoring.",
+        "height": 540,
+        "width": 440,
+        "color": 4
+      },
+      "id": "note-overview-4",
+      "name": "Overview & Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Scan Remote MCP Endpoints\nRead-only tools/list inspection + SHA-256 hashing ($0.00 on unreachable URLs).",
+        "height": 280,
+        "width": 640,
+        "color": 7
+      },
+      "id": "note-s1-4",
+      "name": "Stage 1 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Detect OWASP MCP03 & Rug-Pull Drift\nFilters SAFE vs CAUTION/DANGEROUS servers and formats actionable alerts.",
+        "height": 280,
+        "width": 520,
+        "color": 6
+      },
+      "id": "note-s2-4",
+      "name": "Stage 2 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        280,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-4",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "urls-4",
+              "name": "serverUrls",
+              "value": "={{ [\"https://aegisaudit.org/mcp\", \"https://docs.mcp.cloudflare.com/mcp\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "hashes-4",
+              "name": "baselineHashes",
+              "value": "={{ {} }}",
+              "type": "object"
+            },
+            {
+              "id": "caution-4",
+              "name": "alertOnCautionOnly",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-targets-4",
+      "name": "Configure MCP Endpoints & Pinned Hashes",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~mcp-server-security-scanner/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ serverUrls: $json.serverUrls, baselineHashes: $json.baselineHashes, concurrency: 5, requestTimeoutMs: 10000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-actor5",
+      "name": "Scan MCP Servers (OWASP + TOFU)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Configure MCP Endpoints & Pinned Hashes').first()?.json || {};\nconst alertOnCautionOnly = cfg.alertOnCautionOnly !== false;\nconst alerts = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row || row.status !== 'audited') continue;\n\n  const criticalCount = row.findingsCount?.critical ?? 0;\n  const highCount = row.findingsCount?.high ?? 0;\n  const hasCriticalRisk = row.verdict === 'DANGEROUS' || row.rugPullDriftDetected === true || criticalCount > 0;\n  const hasCautionRisk = row.verdict === 'CAUTION' || highCount > 0;\n\n  if (!hasCriticalRisk && !(alertOnCautionOnly && hasCautionRisk)) continue;\n\n  const findings = Array.isArray(row.findings) ? row.findings : [];\n  alerts.push({\n    json: {\n      target: row.target,\n      grade: row.grade,\n      verdict: row.verdict,\n      riskScore: row.riskScore ?? 0,\n      toolCount: row.toolCount ?? 0,\n      rugPullDriftDetected: Boolean(row.rugPullDriftDetected),\n      manifestHashSha256: row.manifestHashSha256 || null,\n      baselineHashProvided: row.baselineHashProvided || null,\n      criticalFindings: criticalCount,\n      highFindings: highCount,\n      topRuleIds: findings.slice(0, 5).map((f) => f.ruleId).join(', '),\n      alertSummary: `[${row.verdict}] ${row.target} (Grade ${row.grade}, risk ${row.riskScore ?? 0}, drift=${Boolean(row.rugPullDriftDetected)}): ${findings.map((f) => f.ruleId).join(', ') || 'High-risk findings'}`,\n      auditedAt: row.auditedAt || null\n    }\n  });\n}\n\nreturn alerts;"
+      },
+      "id": "code-eval-mcp",
+      "name": "Evaluate MCP Security & Rug-Pull Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configure MCP Endpoints & Pinned Hashes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure MCP Endpoints & Pinned Hashes": {
+      "main": [
+        [
+          {
+            "node": "Scan MCP Servers (OWASP + TOFU)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan MCP Servers (OWASP + TOFU)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate MCP Security & Rug-Pull Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

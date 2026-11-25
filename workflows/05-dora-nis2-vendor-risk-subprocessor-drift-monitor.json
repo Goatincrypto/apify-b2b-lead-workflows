@@ -1,0 +1,187 @@
+{
+  "name": "DORA & NIS2 Weekly Vendor Risk, TLS 200-Day & AI Subprocessor Drift Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "### How it works\nThis compliance automation continuously audits your third-party SaaS vendors for EU DORA, NIS2, CA/Browser Forum Ballot SC-081 (200-day TLS certificate lifespan), and silent AI subprocessor changes. First, it runs Apify's DORA & NIS2 Vendor Risk & Trust Center Monitor across your vendor domain list (probing TLS 443, Certificate Transparency logs, SPF/DMARC/CAA/DNSSEC, HTTP security headers, and Vanta/SafeBase/Drata/Custom Trust Centers). Next, the Code node filters vendors exhibiting TLS certs over 200 days, subprocessor SHA-256 drift, weak DMARC, external AI subprocessor exposure, or a DORA/NIS2 score below your threshold. Connect Slack, Jira, Vanta, or Google Sheets after the final node.\n\n### Setup\n1. Copy your Apify API token from Apify Console -> Settings -> Integrations.\n2. In **Audit SaaS Vendors (TLS + Trust Center)**, select **Generic Credential Type -> HTTP Bearer Auth** and attach your Apify API token credential.\n3. Edit `domains`, `minAcceptableScore`, and optional `baselineSubprocessorHashes` inside **Configure Vendors & Drift Baselines**.\n4. Optionally swap **Manual Trigger** for a weekly **Schedule Trigger**.\n\n### Customization\n- Copy `subprocessorHashSha256` from your first baseline run into `baselineSubprocessorHashes` to receive alerts whenever a vendor silently adds OpenAI, Anthropic, Bedrock, or new cloud subprocessors.",
+        "height": 560,
+        "width": 440,
+        "color": 4
+      },
+      "id": "note-overview-5",
+      "name": "Overview & Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Run DORA/NIS2 & Trust Center Audits\nInspects TLS 200d validity, DNS/DMARC/CAA, and Vanta/SafeBase/Drata subprocessors.",
+        "height": 280,
+        "width": 640,
+        "color": 7
+      },
+      "id": "note-s1-5",
+      "name": "Stage 1 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Flag Non-Compliant Vendors & Drift\nSurfaces Ballot SC-081 violations, weak scores, AI subprocessors, and SHA-256 drift.",
+        "height": 280,
+        "width": 520,
+        "color": 6
+      },
+      "id": "note-s2-5",
+      "name": "Stage 2 Section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        280,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-5",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "domains-5",
+              "name": "domains",
+              "value": "={{ [\"stripe.com\", \"datadoghq.com\", \"twilio.com\", \"anthropic.com\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "hashes-5",
+              "name": "baselineSubprocessorHashes",
+              "value": "={{ {} }}",
+              "type": "object"
+            },
+            {
+              "id": "minscore-5",
+              "name": "minAcceptableScore",
+              "value": 85,
+              "type": "number"
+            },
+            {
+              "id": "flagai-5",
+              "name": "flagAiSubprocessors",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-vendors-5",
+      "name": "Configure Vendors & Drift Baselines",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~dora-nis2-vendor-risk-trust-center-monitor/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, baselineSubprocessorHashes: $json.baselineSubprocessorHashes, includeCtDiscovery: true, concurrency: 4, requestTimeoutMs: 10000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-actor6",
+      "name": "Audit SaaS Vendors (TLS + Trust Center)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Configure Vendors & Drift Baselines').first()?.json || {};\nconst minScore = Number(cfg.minAcceptableScore ?? 85);\nconst flagAi = cfg.flagAiSubprocessors !== false;\nconst alerts = [];\n\nfor (const item of $input.all()) {\n  const v = item.json;\n  if (!v || v.status !== 'audited') continue;\n\n  const score = Number(v.doraNis2Score ?? 0);\n  const drift = Boolean(v.trustCenter?.subprocessorDriftDetected);\n  const tlsOver200 = Boolean(v.tlsCert?.exceeds200DayLimit);\n  const aiList = Array.isArray(v.trustCenter?.aiSubprocessors) ? v.trustCenter.aiSubprocessors : [];\n  const flags = Array.isArray(v.riskFlags) ? v.riskFlags : [];\n\n  const triggered = score < minScore || drift || tlsOver200 || (flagAi && aiList.length > 0);\n  if (!triggered) continue;\n\n  alerts.push({\n    json: {\n      domain: v.domain,\n      grade: v.grade,\n      doraNis2Score: score,\n      ballotSc081Status: v.tlsCert?.ballotSc081Status || null,\n      tlsValidityDays: v.tlsCert?.validitySpanDays ?? null,\n      dmarcPolicy: v.dnsPosture?.dmarcPolicy || null,\n      caaPresent: Boolean(v.dnsPosture?.caaPresent),\n      trustCenterPlatform: v.trustCenter?.platform || 'None',\n      trustCenterUrl: v.trustCenter?.discoveredUrl || null,\n      certifications: (v.trustCenter?.certifications || []).join(', '),\n      aiSubprocessors: aiList.join(', '),\n      subprocessorDriftDetected: drift,\n      subprocessorHashSha256: v.trustCenter?.subprocessorHashSha256 || null,\n      riskFlags: flags.join(', '),\n      alertSummary: `${v.domain} -> Grade ${v.grade} (${score}/100) | TLS=${v.tlsCert?.ballotSc081Status || 'n/a'} | Drift=${drift} | AI=[${aiList.join(', ') || 'none'}]`,\n      auditedAt: v.auditedAt || null\n    }\n  });\n}\n\nreturn alerts;"
+      },
+      "id": "code-filter-vendor",
+      "name": "Filter DORA/NIS2 Risk & AI Subprocessor Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configure Vendors & Drift Baselines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure Vendors & Drift Baselines": {
+      "main": [
+        [
+          {
+            "node": "Audit SaaS Vendors (TLS + Trust Center)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit SaaS Vendors (TLS + Trust Center)": {
+      "main": [
+        [
+          {
+            "node": "Filter DORA/NIS2 Risk & AI Subprocessor Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
