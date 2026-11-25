@@ -1,0 +1,168 @@
+{
+  "name": "AegisAudit: OWASP MCP03 Tool-Poisoning & SHA-256 Rug-Pull Gate",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "notes": "Send POST JSON {\"serverUrl\": \"https://docs.mcp.cloudflare.com/mcp\"} or replace with a Schedule module."
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~mcp-server-security-scanner/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"serverUrls\": [\"{{1.serverUrl}}\"], \"baselineHashes\": {}, \"concurrency\": 5, \"requestTimeoutMs\": 10000}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "notes": "Stage 1: Read-only OWASP MCP03/MCP06 scan + SHA-256 manifest hashing ($0 on unreachable endpoints)."
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{2.data}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        },
+        "notes": "Iterate scanned MCP server audit results."
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "filter": {
+        "name": "Dangerous, Caution, or SHA-256 Rug-Pull Drift",
+        "conditions": [
+          [
+            {
+              "a": "{{3.verdict}}",
+              "b": "DANGEROUS",
+              "o": "text:equal"
+            }
+          ],
+          [
+            {
+              "a": "{{3.rugPullDriftDetected}}",
+              "b": true,
+              "o": "boolean:equal"
+            }
+          ],
+          [
+            {
+              "a": "{{3.verdict}}",
+              "b": "CAUTION",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "30",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"text\": \"AegisAudit MCP Alert: {{3.target}} | Grade={{3.grade}} | Verdict={{3.verdict}} | Drift={{3.rugPullDriftDetected}} | SHA256={{3.manifestHashSha256}}\"}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 920,
+          "y": 0
+        },
+        "notes": "Stage 2: Post instant Slack/Teams/PagerDuty security alert when MCP03 poisoning or TOFU drift occurs."
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu1.make.com"
+  }
+}

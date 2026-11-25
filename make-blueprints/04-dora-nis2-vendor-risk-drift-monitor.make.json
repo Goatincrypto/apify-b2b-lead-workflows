@@ -1,0 +1,175 @@
+{
+  "name": "AegisAudit: DORA & NIS2 Weekly Vendor Risk & AI Subprocessor Drift Monitor",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "notes": "Send POST JSON {\"domain\": \"twilio.com\"} or trigger weekly from Google Sheets / Vanta."
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "https://api.apify.com/v2/acts/aegisaudit~dora-nis2-vendor-risk-trust-center-monitor/run-sync-get-dataset-items",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_APIFY_API_TOKEN"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "180",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"domains\": [\"{{1.domain}}\"], \"includeCtDiscovery\": true, \"concurrency\": 4, \"requestTimeoutMs\": 10000}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "notes": "Stage 1: Audits TLS 200d validity, Certificate Transparency, DNS/DMARC/CAA, and Vanta/SafeBase/Drata Trust Center subprocessors."
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{2.data}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        },
+        "notes": "Iterate vendor audit records returned by DORA & NIS2 Vendor Risk Monitor."
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "filter": {
+        "name": "Score < 85, TLS > 200d, Subprocessor Drift, or AI Exposure",
+        "conditions": [
+          [
+            {
+              "a": "{{3.doraNis2Score}}",
+              "b": "85",
+              "o": "number:less"
+            }
+          ],
+          [
+            {
+              "a": "{{3.tlsCert.exceeds200DayLimit}}",
+              "b": true,
+              "o": "boolean:equal"
+            }
+          ],
+          [
+            {
+              "a": "{{3.trustCenter.subprocessorDriftDetected}}",
+              "b": true,
+              "o": "boolean:equal"
+            }
+          ],
+          [
+            {
+              "a": "{{3.trustCenter.aiSubprocessorCount}}",
+              "b": "1",
+              "o": "number:greaterorequal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "30",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"text\": \"DORA/NIS2 Vendor Alert: {{3.domain}} | Grade={{3.grade}} ({{3.doraNis2Score}}/100) | TLS={{3.tlsCert.ballotSc081Status}} | Drift={{3.trustCenter.subprocessorDriftDetected}} | AI={{3.trustCenter.aiSubprocessorCount}}\"}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 920,
+          "y": 0
+        },
+        "notes": "Stage 2: Send compliance drift alerts to Slack / Jira / GRC webhook."
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu1.make.com"
+  }
+}
