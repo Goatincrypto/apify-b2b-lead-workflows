@@ -77,6 +77,38 @@ All three AegisAudit Apify Actors expose Apify's synchronous HTTP endpoint (`run
 4. Map `[0].atsProvider`, `[0].openRolesCount`, `[0].velocity.postedLast14Days`, `[0].hiringIntentSignals`, and `[0].techStackFromJobs` (60+ internal tools detected inside job descriptions).
 5. **Cost control:** If a company has no open roles or no detectable ATS, Apify charges **$0.00**.
 
+### Column D: OWASP MCP03 Server Security & SHA-256 Rug-Pull Gate
+1. Add an **HTTP API** column with **Method** `POST` and **Endpoint**:
+   ```
+   https://api.apify.com/v2/acts/aegisaudit~mcp-server-security-scanner/run-sync-get-dataset-items
+   ```
+2. Set **Body**:
+   ```json
+   {
+     "serverUrls": ["{{MCP Server URL}}"],
+     "baselineHashes": {},
+     "concurrency": 5,
+     "requestTimeoutMs": 10000
+   }
+   ```
+3. Map `[0].grade`, `[0].verdict`, `[0].riskScore`, `[0].manifestHashSha256`, and `[0].rugPullDriftDetected`.
+
+### Column E: DORA & NIS2 Vendor Risk, TLS 200d & Trust Center Drift
+1. Add an **HTTP API** column with **Method** `POST` and **Endpoint**:
+   ```
+   https://api.apify.com/v2/acts/aegisaudit~dora-nis2-vendor-risk-trust-center-monitor/run-sync-get-dataset-items
+   ```
+2. Set **Body**:
+   ```json
+   {
+     "domains": ["{{Company Domain}}"],
+     "includeCtDiscovery": true,
+     "concurrency": 4,
+     "requestTimeoutMs": 10000
+   }
+   ```
+3. Map `[0].grade`, `[0].doraNis2Score`, `[0].tlsCert.ballotSc081Status`, `[0].trustCenter.platform`, `[0].trustCenter.aiSubprocessors`, and `[0].trustCenter.subprocessorHashSha256`.
+
 ---
 
 ## 2. Make.com Import-Ready Blueprints (1-Click JSON Import)
@@ -84,6 +116,8 @@ All three AegisAudit Apify Actors expose Apify's synchronous HTTP endpoint (`run
 Skip manual module wiring by importing our validated Make.com scenario blueprints directly:
 - [`make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json`](../make-blueprints/01-agency-tech-seo-geo-to-decision-makers.make.json): Tech Stack + SEO/GEO Audit -> Filter `salesOpportunities >= 1` -> Verified Decision-Maker Enrichment.
 - [`make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json`](../make-blueprints/02-hiring-intent-ats-to-decision-makers.make.json): Public ATS Hiring-Intent Scan -> Filter `hiringIntentSignals >= 1` -> Verified Decision-Maker Enrichment.
+- [`make-blueprints/03-mcp-server-security-rug-pull-gate.make.json`](../make-blueprints/03-mcp-server-security-rug-pull-gate.make.json): OWASP MCP03 & SHA-256 Rug-Pull Gate -> Slack alert webhook.
+- [`make-blueprints/04-dora-nis2-vendor-risk-drift-monitor.make.json`](../make-blueprints/04-dora-nis2-vendor-risk-drift-monitor.make.json): DORA & NIS2 Vendor Risk & AI Subprocessor Drift Monitor -> Slack alert webhook.
 
 **How to import in Make.com (30 seconds):**
 1. Open a new Scenario in Make.com -> click **`...` (More) -> Import Blueprint** and pick either `.make.json` file.
