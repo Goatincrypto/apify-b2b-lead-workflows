@@ -1,0 +1,579 @@
+{
+  "name": "Enterprise Multi-Signal ABM Pipeline: Parallel Tech/GEO + ATS Hiring Intent with Persistent Deduplication & 45-Day Cooldown",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "### How it works\nThis production ABM & RevOps pipeline combines **two independent buying-intent signals** (website Tech Stack + SEO/GEO audit AND live public ATS hiring velocity) with **stateful company-level deduplication, signal freshness checks, and a 45-day outreach cooldown** so your team never double-contacts the same account.\n\n1. **Weekly Schedule & ICP Config:** Runs every Monday at 08:00 (or manually) across your target domain list.\n2. **Parallel Multi-Signal Discovery ($0 on dead/non-hiring sites):** Simultaneously scans Technical SEO / `/llms.txt` / tech stack opportunities AND public Greenhouse, Ashby, Lever, SmartRecruiters, Workable & Recruitee job boards (even when homepages sit behind strict Cloudflare WAF).\n3. **Canonical Company Record & Cooldown State:** Normalizes root domains across multiple URLs/ATS boards, tracks `first_seen_at`, `last_seen_at`, `last_contacted_at`, and `source_url` per signal in workflow static state (or swap in Postgres/Supabase), enforces `postedLast14Days >= 1` freshness, and suppresses accounts contacted within the last `cooldownDays` (default 45d).\n4. **Zero-Waste Enrichment & Lead Stage Separation:** Enriches ONLY fresh, out-of-cooldown accounts for verified decision-makers, then explicitly separates **Qualified Sales Leads** (`qualified_hiring_lead`, composite score >= threshold + named executive) from **Verified Contact Watchlist** (`verified_contact_watchlist`), routing hot accounts to Slack + CRM.\n\n### Setup\n1. Create a **Generic Credential -> HTTP Bearer Auth** in n8n with your Apify API token (`Apify Console -> Settings -> Integrations`) and select it in all 3 HTTP Request nodes.\n2. Connect your **Google Sheets** CRM document and **Slack** channel credentials on the final routing nodes (or swap for Postgres / HubSpot).\n3. Customize `domains`, `targetSignals`, `cooldownDays` (default `45`), and `minCompositeScore` (default `60`) inside **Configure ICP Targets & Cooldown Policy**.",
+        "height": 640,
+        "width": 480,
+        "color": 4
+      },
+      "id": "note-overview-6",
+      "name": "Overview & Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: Parallel Tech/GEO & Public ATS Discovery\nRuns Tech Stack + `/llms.txt` audit and multi-ATS job board discovery concurrently ($0 on unreachable or non-hiring targets).",
+        "height": 460,
+        "width": 660,
+        "color": 7
+      },
+      "id": "note-s1-6",
+      "name": "Stage 1 Multi-Signal Discovery",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: Canonical Deduplication, Freshness & Cooldown Gate\nMaintains canonical company state (`first_seen_at`, `last_seen_at`, `source_url`) and blocks repeat outreach within 45 days.",
+        "height": 340,
+        "width": 680,
+        "color": 5
+      },
+      "id": "note-s2-6",
+      "name": "Stage 2 Stateful Dedup & Cooldown",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        600,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3: Decision-Maker Enrichment & Qualified vs Watchlist Routing\nSeparates valid corporate emails from high-intent sales leads before CRM upsert & Slack alerting.",
+        "height": 480,
+        "width": 980,
+        "color": 6
+      },
+      "id": "note-s3-6",
+      "name": "Stage 3 Enrichment & CRM Routing",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-6",
+      "name": "Weekly Monday Prospecting Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -520,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "domains-6",
+              "name": "domains",
+              "value": "={{ [\"stripe.com\", \"snowflake.com\", \"posthog.com\", \"allbirds.com\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "signals-6",
+              "name": "targetSignals",
+              "value": "={{ [\"HIRING_SALES_GROWTH\", \"HIRING_MARKETING_SEO_GEO\", \"HIRING_AI_ML_ENGINEERING\", \"RAPID_HIRING_SURGE\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "cooldown-6",
+              "name": "cooldownDays",
+              "value": 45,
+              "type": "number"
+            },
+            {
+              "id": "minscore-6",
+              "name": "minCompositeScore",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "require-fresh-14d",
+              "name": "requireFresh14dPosting",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-icp-6",
+      "name": "Configure ICP Targets & Cooldown Policy",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -280,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~website-tech-stack-seo-audit/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, checkSeoAndGeo: true, checkDnsAndSsl: true, includeFailedDomainsInDataset: true, concurrency: 15 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-tech-6",
+      "name": "Scan Website Tech Stack & SEO/GEO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        40,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~company-hiring-intent-ats-jobs-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxJobsPerCompany: 30, includeJobDescriptions: false, includeEmptyDomainsInDataset: true, concurrency: 15, requestTimeoutMs: 8000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-ats-6",
+      "name": "Scan Company ATS & Hiring Velocity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        40,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge-signals-6",
+      "name": "Merge Tech & Hiring Signals",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        340,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Configure ICP Targets & Cooldown Policy').first()?.json || {};\nconst targetSignals = new Set(Array.isArray(cfg.targetSignals) ? cfg.targetSignals : []);\nconst cooldownDays = Number(cfg.cooldownDays ?? 45);\nconst minCompositeScore = Number(cfg.minCompositeScore ?? 60);\nconst requireFresh14d = cfg.requireFresh14dPosting !== false;\nconst nowMs = Date.now();\nconst nowIso = new Date(nowMs).toISOString();\nconst cooldownMs = cooldownDays * 86400 * 1000;\n\nconst state = $getWorkflowStaticData('global');\nif (!state.companyLedger) state.companyLedger = {};\nconst ledger = state.companyLedger;\n\nfunction canonicalDomain(raw) {\n  const cleaned = String(raw || '').trim().toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0];\n  return cleaned || null;\n}\n\nconst byCompany = {};\nfor (const item of $input.all()) {\n  const row = item.json || {};\n  const dom = canonicalDomain(row.domain);\n  if (!dom) continue;\n  if (!byCompany[dom]) {\n    byCompany[dom] = {\n      domain: dom,\n      atsProviders: new Set(),\n      careersUrls: new Set(),\n      openRolesCount: 0,\n      postedLast14Days: 0,\n      hiringSignals: new Set(),\n      techFromJobs: new Set(),\n      salesOpportunities: new Set(),\n      cms: null,\n      hasLlmsTxt: null,\n    };\n  }\n  const rec = byCompany[dom];\n\n  // Ingest ATS Hiring-Intent record (merges cleanly even if same company appears on multiple ATS boards)\n  if (Array.isArray(row.hiringIntentSignals) || row.atsProvider) {\n    if (row.atsProvider) rec.atsProviders.add(String(row.atsProvider));\n    if (row.careersUrl) rec.careersUrls.add(String(row.careersUrl));\n    rec.openRolesCount = Math.max(rec.openRolesCount, Number(row.openRolesCount || 0));\n    rec.postedLast14Days = Math.max(rec.postedLast14Days, Number(row.velocity?.postedLast14Days || 0));\n    for (const s of row.hiringIntentSignals || []) rec.hiringSignals.add(String(s));\n    for (const t of row.techStackFromJobs || []) rec.techFromJobs.add(String(t));\n  }\n\n  // Ingest Website Tech Stack & SEO/GEO record\n  if (Array.isArray(row.salesOpportunities) || row.seo || row.geo) {\n    if (row.cms) rec.cms = row.cms;\n    if (typeof row.geo?.hasLlmsTxt === 'boolean') rec.hasLlmsTxt = row.geo.hasLlmsTxt;\n    for (const op of row.salesOpportunities || []) rec.salesOpportunities.add(String(op));\n  }\n}\n\nconst eligibleDomains = [];\nconst companySnapshots = {};\nconst suppressedLog = [];\n\nfor (const [dom, rec] of Object.entries(byCompany)) {\n  const matchedHiring = [...rec.hiringSignals].filter((s) => targetSignals.size === 0 || targetSignals.has(s));\n  const opps = [...rec.salesOpportunities];\n\n  // Composite buying-intent score (0-100): Hiring intent + 14d freshness + tech/GEO gaps\n  let score = 0;\n  if (matchedHiring.length > 0) score += 45;\n  if (rec.postedLast14Days >= 3) score += 25;\n  else if (rec.postedLast14Days >= 1) score += 15;\n  if (opps.length >= 2) score += 20;\n  else if (opps.length === 1) score += 10;\n  if (rec.techFromJobs.size >= 2) score += 10;\n  score = Math.min(100, score);\n\n  const prior = ledger[dom] || {\n    domain: dom,\n    first_seen_at: nowIso,\n    last_seen_at: nowIso,\n    last_contacted_at: null,\n    signals: {},\n  };\n  prior.last_seen_at = nowIso;\n\n  const primarySignalUrl = [...rec.careersUrls][0] || `https://${dom}`;\n  for (const sig of [...matchedHiring, ...opps]) {\n    if (!prior.signals[sig]) {\n      prior.signals[sig] = { first_seen_at: nowIso, last_seen_at: nowIso, source_url: primarySignalUrl };\n    } else {\n      prior.signals[sig].last_seen_at = nowIso;\n      prior.signals[sig].source_url = primarySignalUrl;\n    }\n  }\n  ledger[dom] = prior;\n\n  const lastContactMs = prior.last_contacted_at ? Date.parse(prior.last_contacted_at) : 0;\n  const withinCooldown = lastContactMs > 0 && (nowMs - lastContactMs) < cooldownMs;\n  const lacksFreshPosting = requireFresh14d && matchedHiring.length > 0 && rec.postedLast14Days === 0 && opps.length === 0;\n\n  if (withinCooldown) {\n    suppressedLog.push({ domain: dom, reason: 'COOLDOWN_ACTIVE', last_contacted_at: prior.last_contacted_at });\n    continue;\n  }\n  if (lacksFreshPosting) {\n    suppressedLog.push({ domain: dom, reason: 'STALE_HIRING_SIGNALS_0_IN_14D' });\n    continue;\n  }\n  if (matchedHiring.length === 0 && opps.length === 0) {\n    suppressedLog.push({ domain: dom, reason: 'NO_MATCHING_INTENT_SIGNALS' });\n    continue;\n  }\n\n  eligibleDomains.push(dom);\n  companySnapshots[dom] = {\n    domain: dom,\n    compositeIntentScore: score,\n    meetsQualifiedThreshold: score >= minCompositeScore,\n    atsProviders: [...rec.atsProviders].join(', ') || null,\n    signalSourceUrl: primarySignalUrl,\n    openRolesCount: rec.openRolesCount,\n    postedLast14Days: rec.postedLast14Days,\n    matchedHiringSignals: matchedHiring,\n    salesOpportunities: opps,\n    internalTechFromJobs: [...rec.techFromJobs].slice(0, 10),\n    first_seen_at: prior.first_seen_at,\n    last_seen_at: prior.last_seen_at,\n  };\n}\n\nreturn [{\n  json: {\n    hasEligibleAccounts: eligibleDomains.length > 0,\n    eligibleCount: eligibleDomains.length,\n    suppressedCount: suppressedLog.length,\n    suppressedLog,\n    domains: eligibleDomains,\n    companySnapshots,\n    minCompositeScore\n  }\n}];"
+      },
+      "id": "code-canonical-dedup-6",
+      "name": "Canonical Dedup, Signal Freshness & Cooldown Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-eligible-6",
+              "leftValue": "={{ $json.hasEligibleAccounts }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-eligible-6",
+      "name": "Has Eligible Fresh Accounts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        980,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/aegisaudit~domain-decision-maker-finder/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domains: $json.domains, maxPagesPerDomain: 6, verifyDns: true, extractDecisionMakers: true, inferPatternEmails: false, includeEmptyDomainsInDataset: false, concurrency: 15, requestTimeoutMs: 7000 }) }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "http-contacts-6",
+      "name": "Enrich Verified Decision-Makers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gate = $('Canonical Dedup, Signal Freshness & Cooldown Gate').first()?.json || {};\nconst snapshots = gate.companySnapshots || {};\nconst state = $getWorkflowStaticData('global');\nif (!state.companyLedger) state.companyLedger = {};\nconst nowIso = new Date().toISOString();\nconst out = [];\n\nfor (const item of $input.all()) {\n  const lead = item.json || {};\n  if (lead.status !== 'enriched' || !lead.domain) continue;\n  const dom = String(lead.domain).toLowerCase().trim();\n  const snap = snapshots[dom];\n  if (!snap) continue;\n\n  const verifiedDms = Array.isArray(lead.decisionMakers)\n    ? lead.decisionMakers.filter((dm) => dm && dm.verifiedForBilling === true && dm.email)\n    : [];\n\n  // Separate a verified contact address from a true qualified sales lead\n  const isQualifiedLead = Boolean(snap.meetsQualifiedThreshold && (verifiedDms.length > 0 || snap.postedLast14Days >= 1));\n  const leadStage = isQualifiedLead ? 'qualified_hiring_lead' : 'verified_contact_watchlist';\n\n  if (isQualifiedLead && state.companyLedger[dom]) {\n    state.companyLedger[dom].last_contacted_at = nowIso;\n  }\n\n  const common = {\n    domain: dom,\n    companyName: lead.companyName || dom,\n    leadStage,\n    compositeIntentScore: snap.compositeIntentScore,\n    atsProviders: snap.atsProviders,\n    openRolesCount: snap.openRolesCount,\n    postedLast14Days: snap.postedLast14Days,\n    matchedHiringSignals: (snap.matchedHiringSignals || []).join(', '),\n    salesOpportunities: (snap.salesOpportunities || []).join(', '),\n    internalTechFromJobs: (snap.internalTechFromJobs || []).join(', '),\n    first_seen_at: snap.first_seen_at,\n    last_seen_at: snap.last_seen_at,\n    signal_source_url: snap.signalSourceUrl,\n  };\n\n  if (verifiedDms.length > 0) {\n    for (const dm of verifiedDms) {\n      out.push({\n        json: {\n          ...common,\n          contactType: 'verified_decision_maker',\n          contactName: dm.fullName,\n          contactRole: dm.role,\n          contactEmail: dm.email,\n          contact_source_url: dm.sourceUrl || lead.sourceUrl || null\n        }\n      });\n    }\n  } else if (lead.primaryEmail) {\n    out.push({\n      json: {\n        ...common,\n        contactType: 'company_primary_email',\n        contactName: null,\n        contactRole: null,\n        contactEmail: lead.primaryEmail,\n        contact_source_url: lead.sourceUrl || null\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "code-classify-leads-6",
+      "name": "Separate Qualified Leads vs Watchlist & Stamp Cooldown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-qualified-6",
+              "leftValue": "={{ $json.leadStage }}",
+              "rightValue": "qualified_hiring_lead",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-qualified-stage-6",
+      "name": "Is Qualified Sales Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Qualified_ABM_Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "domain"
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-qualified-6",
+      "name": "Upsert Qualified Lead to Google Sheets CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2180,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "={{ 'Hot ABM Lead (' + $json.compositeIntentScore + '/100): ' + $json.companyName + ' (' + $json.domain + ') | Fresh 14d roles: ' + $json.postedLast14Days + ' | Signals: ' + $json.matchedHiringSignals + ' | Contact: ' + ($json.contactName || 'Team') + ' <' + $json.contactEmail + '>' }}",
+        "otherOptions": {}
+      },
+      "id": "slack-hot-alert-6",
+      "name": "Send Hot Account Alert to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        2440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Verified_Contacts_Watchlist",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "domain"
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-watchlist-6",
+      "name": "Upsert Watchlist Contact to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2180,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Weekly Monday Prospecting Schedule": {
+      "main": [
+        [
+          {
+            "node": "Configure ICP Targets & Cooldown Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure ICP Targets & Cooldown Policy": {
+      "main": [
+        [
+          {
+            "node": "Scan Website Tech Stack & SEO/GEO",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Scan Company ATS & Hiring Velocity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Website Tech Stack & SEO/GEO": {
+      "main": [
+        [
+          {
+            "node": "Merge Tech & Hiring Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Company ATS & Hiring Velocity": {
+      "main": [
+        [
+          {
+            "node": "Merge Tech & Hiring Signals",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Tech & Hiring Signals": {
+      "main": [
+        [
+          {
+            "node": "Canonical Dedup, Signal Freshness & Cooldown Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Canonical Dedup, Signal Freshness & Cooldown Gate": {
+      "main": [
+        [
+          {
+            "node": "Has Eligible Fresh Accounts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Eligible Fresh Accounts?": {
+      "main": [
+        [
+          {
+            "node": "Enrich Verified Decision-Makers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Enrich Verified Decision-Makers": {
+      "main": [
+        [
+          {
+            "node": "Separate Qualified Leads vs Watchlist & Stamp Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separate Qualified Leads vs Watchlist & Stamp Cooldown": {
+      "main": [
+        [
+          {
+            "node": "Is Qualified Sales Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Qualified Sales Lead?": {
+      "main": [
+        [
+          {
+            "node": "Upsert Qualified Lead to Google Sheets CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Watchlist Contact to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Qualified Lead to Google Sheets CRM": {
+      "main": [
+        [
+          {
+            "node": "Send Hot Account Alert to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "apify"
+    },
+    {
+      "name": "abm"
+    },
+    {
+      "name": "lead-generation"
+    },
+    {
+      "name": "deduplication"
+    }
+  ]
+}
