@@ -51,7 +51,7 @@ function loadWorkflow(fileName) {
   return wf;
 }
 
-function runCodeNode(wf, nodeName, inputItems, nodeLookup = {}) {
+function runCodeNode(wf, nodeName, inputItems, nodeLookup = {}, staticState = {}) {
   const node = wf.nodes.find((n) => n.name === nodeName);
   assert.ok(node && node.type === 'n8n-nodes-base.code', `Code node not found: ${nodeName}`);
   const jsCode = node.parameters.jsCode;
@@ -61,6 +61,7 @@ function runCodeNode(wf, nodeName, inputItems, nodeLookup = {}) {
     $: (name) => ({
       first: () => nodeLookup[name] ?? null,
     }),
+    $getWorkflowStaticData: () => staticState,
   };
 
   const wrapped = `(function() {\n${jsCode}\n})()`;
@@ -268,6 +269,69 @@ assert.equal(vendorAlerts.length, 1);
 assert.equal(vendorAlerts[0].json.domain, 'twilio.com');
 assert.equal(vendorAlerts[0].json.subprocessorDriftDetected, true);
 
+// --- Workflow 06 (Enterprise Multi-Signal ABM + Persistent Canonical Dedup & 45d Cooldown) ---
+const wf6 = loadWorkflow('06-enterprise-multi-signal-abm-dedup-pipeline.json');
+const sharedState6 = {};
+const mockSignals6 = [
+  {
+    json: {
+      domain: 'https://www.LakefrontBrewery.com/careers',
+      status: 'hiring',
+      atsProvider: 'ashby',
+      careersUrl: 'https://jobs.ashbyhq.com/lakefront',
+      openRolesCount: 8,
+      hiringIntentSignals: ['HIRING_SALES_GROWTH'],
+      techStackFromJobs: ['Salesforce', 'HubSpot'],
+      velocity: { postedLast14Days: 3 },
+    },
+  },
+  {
+    json: {
+      domain: 'lakefrontbrewery.com',
+      status: 'analyzed',
+      cms: 'WordPress',
+      geo: { hasLlmsTxt: false },
+      salesOpportunities: ['MISSING_LLMS_TXT_FOR_AI_SEARCH', 'MISSING_DMARC_EMAIL_SECURITY'],
+    },
+  },
+  {
+    json: {
+      domain: 'stale-jobs.com',
+      status: 'hiring',
+      atsProvider: 'greenhouse',
+      openRolesCount: 5,
+      hiringIntentSignals: ['HIRING_SALES_GROWTH'],
+      velocity: { postedLast14Days: 0 },
+    },
+  },
+];
+const icpLookup6 = {
+  'Configure ICP Targets & Cooldown Policy': {
+    json: { targetSignals: ['HIRING_SALES_GROWTH'], cooldownDays: 45, minCompositeScore: 60, requireFresh14dPosting: true },
+  },
+};
+const gateRun1 = runCodeNode(wf6, 'Canonical Dedup, Signal Freshness & Cooldown Gate', mockSignals6, icpLookup6, sharedState6);
+assert.equal(gateRun1[0].json.hasEligibleAccounts, true);
+assert.deepEqual(gateRun1[0].json.domains, ['lakefrontbrewery.com']);
+assert.equal(gateRun1[0].json.suppressedCount, 1); // stale-jobs.com suppressed due to 0 postings in 14d
+
+const classifiedRun1 = runCodeNode(
+  wf6,
+  'Separate Qualified Leads vs Watchlist & Stamp Cooldown',
+  mockActor1Rows,
+  { 'Canonical Dedup, Signal Freshness & Cooldown Gate': gateRun1[0] },
+  sharedState6
+);
+assert.equal(classifiedRun1.length, 1);
+assert.equal(classifiedRun1[0].json.leadStage, 'qualified_hiring_lead');
+assert.equal(classifiedRun1[0].json.contactEmail, 'russ@lakefrontbrewery.com');
+
+// Second run immediately after must suppress lakefrontbrewery.com via 45-day cooldown!
+const gateRun2 = runCodeNode(wf6, 'Canonical Dedup, Signal Freshness & Cooldown Gate', mockSignals6, icpLookup6, sharedState6);
+assert.equal(gateRun2[0].json.hasEligibleAccounts, false);
+assert.equal(gateRun2[0].json.domains.length, 0);
+assert.ok(gateRun2[0].json.suppressedLog.some((s) => s.domain === 'lakefrontbrewery.com' && s.reason === 'COOLDOWN_ACTIVE'));
+
 // --- Make.com Blueprints Validation ---
 const makeDir = path.resolve(__dirname, '..', 'make-blueprints');
 const makeSpecs = [
@@ -300,4 +364,4 @@ for (const spec of makeSpecs) {
   }
 }
 
-console.log('ALL 5 N8N CREATOR-COMPLIANT WORKFLOWS + 4 MAKE.COM BLUEPRINTS PASSED VALIDATION');
+console.log('ALL 6 N8N CREATOR-COMPLIANT WORKFLOWS + 4 MAKE.COM BLUEPRINTS PASSED VALIDATION');
